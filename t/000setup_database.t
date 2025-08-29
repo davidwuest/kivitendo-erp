@@ -63,7 +63,7 @@ sub setup {
 
 sub drop_and_create_database {
   my @dbi_options = (
-    'dbi:Pg:dbname=' . $db_cfg->{template} . ';host=' . $db_cfg->{host} . ';port=' . $db_cfg->{port},
+  'dbi:Pg:dbname=' . $db_cfg->{template} . ';host=' . $db_cfg->{host} . ';port=' . $db_cfg->{port} . ';sslmode=require;channel_binding=required',
     $db_cfg->{user},
     $db_cfg->{password},
     SL::DBConnect->get_options,
@@ -110,7 +110,7 @@ sub create_initial_schema {
   dbg("Creating initial schema");
 
   my @dbi_options = (
-    'dbi:Pg:dbname=' . $db_cfg->{db} . ';host=' . $db_cfg->{host} . ';port=' . $db_cfg->{port},
+  'dbi:Pg:dbname=' . $db_cfg->{db} . ';host=' . $db_cfg->{host} . ';port=' . $db_cfg->{port} . ';sslmode=require;channel_binding=required',
     $db_cfg->{user},
     $db_cfg->{password},
     SL::DBConnect->get_options(PrintError => 0, PrintWarn => 0),
@@ -123,7 +123,7 @@ sub create_initial_schema {
 
   if ($db_cfg->{superuser_user} && ($db_cfg->{superuser_user} ne $db_cfg->{user})) {
     @dbi_options = (
-      'dbi:Pg:dbname=' . $db_cfg->{db} . ';host=' . $db_cfg->{host} . ';port=' . $db_cfg->{port} . ';sslmode=require',
+  'dbi:Pg:dbname=' . $db_cfg->{db} . ';host=' . $db_cfg->{host} . ';port=' . $db_cfg->{port} . ';sslmode=require;channel_binding=required',
       $db_cfg->{superuser_user},
       $db_cfg->{superuser_password},
       SL::DBConnect->get_options(PrintError => 0, PrintWarn => 0),
