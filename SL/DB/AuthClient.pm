@@ -110,7 +110,7 @@ sub get_dbconnect_args {
   my ($self, %params) = @_;
 
   return (
-  'dbi:Pg:dbname=' . $self->dbname . ';host=' . ($self->dbhost || 'localhost') . ';port=' . ($self->dbport || 5432) . ';sslmode=require;channel_binding=required',
+  'dbi:Pg:dbname=' . $self->dbname . ';host=' . ($self->dbhost || 'localhost') . ';port=' . ($self->dbport || 5432) . ';sslmode=require;channel_binding=required?options=endpoint%3Dep-young-darkness-a2bspxhq-pooler',
     $self->dbuser,
     $self->dbpasswd,
     SL::DBConnect->get_options(%params),

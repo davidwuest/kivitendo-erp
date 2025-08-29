@@ -71,7 +71,7 @@ sub get_connect_args {
   my $db_cfg          = SL::DB->registry->entry(domain => $domain, type => $type) || { };
 
   return (
-  'dbi:Pg:dbname=' . $db_cfg->{database} . ';host=' . ($db_cfg->{host} || 'localhost') . ';port=' . ($db_cfg->{port} || 5432) . ';sslmode=require;channel_binding=required',
+  'dbi:Pg:dbname=' . $db_cfg->{database} . ';host=' . ($db_cfg->{host} || 'localhost') . ';port=' . ($db_cfg->{port} || 5432) . ';sslmode=require;channel_binding=required?options=endpoint%3Dep-young-darkness-a2bspxhq-pooler',
     $db_cfg->{username},
     $db_cfg->{password},
     $self->get_options(%{ $db_cfg->{connect_options} || {} }, @args),
