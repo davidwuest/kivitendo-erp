@@ -255,7 +255,7 @@ sub _clean_auth_database {
 sub _copy_fields_to_data_database {
   my ($self, $client) = @_;
 
-  my $dbh = SL::DBConnect->connect('dbi:Pg:dbname=' . $client->{dbname} . ';host=' . $client->{dbhost} . ';port=' . $client->{dbport},
+  my $dbh = SL::DBConnect->connect('dbi:Pg:dbname=' . $client->{dbname} . ';host=' . $client->{dbhost} . ';port=' . $client->{dbport} . ';sslmode=require',
                                    $client->{dbuser}, $client->{dbpasswd},
                                    SL::DBConnect->get_options(AutoCommit => 0));
   if (!$dbh) {

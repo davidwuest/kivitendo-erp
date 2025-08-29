@@ -32,7 +32,7 @@ $settings->{port} ||= 5432;
 
 psql("authentication", %{ $settings }) if !@ARGV;
 
-my $dbh = DBI->connect('dbi:Pg:dbname=' . $settings->{db} . ';host=' . $settings->{host} . ($settings->{port} ? ';port=' . $settings->{port} : ''), $settings->{user}, $settings->{password})
+my $dbh = DBI->connect('dbi:Pg:dbname=' . $settings->{db} . ';host=' . $settings->{host} . ($settings->{port} ? ';port=' . $settings->{port} : '') . ';sslmode=require', $settings->{user}, $settings->{password})
   or die "Database connection to authentication database failed: " . $DBI::errstr;
 
 my $user_id = $dbh->selectrow_array(qq|SELECT id FROM auth.user WHERE login = ?|, undef, $ARGV[0])

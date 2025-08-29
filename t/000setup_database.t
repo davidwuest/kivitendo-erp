@@ -123,7 +123,7 @@ sub create_initial_schema {
 
   if ($db_cfg->{superuser_user} && ($db_cfg->{superuser_user} ne $db_cfg->{user})) {
     @dbi_options = (
-      'dbi:Pg:dbname=' . $db_cfg->{db} . ';host=' . $db_cfg->{host} . ';port=' . $db_cfg->{port},
+      'dbi:Pg:dbname=' . $db_cfg->{db} . ';host=' . $db_cfg->{host} . ';port=' . $db_cfg->{port} . ';sslmode=require',
       $db_cfg->{superuser_user},
       $db_cfg->{superuser_password},
       SL::DBConnect->get_options(PrintError => 0, PrintWarn => 0),
