@@ -1,6 +1,6 @@
 -- @tag: trigram_indices
 -- @description: Trigram Indizes für häufig durchsuchte Spalten
--- @depends: release_3_5_0 trigram_extension
+-- @depends: release_3_5_0 
 
 CREATE INDEX customer_customernumber_gin_trgm_idx    ON customer        USING gin (customernumber          gin_trgm_ops);
 CREATE INDEX customer_name_gin_trgm_idx              ON customer        USING gin (name                    gin_trgm_ops);
