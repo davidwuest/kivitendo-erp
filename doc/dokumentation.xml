@@ -2,7 +2,7 @@
 <!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook XML V4.2//EN"
 "https://www.oasis-open.org/docbook/xml/4.2/docbookx.dtd">
 <book id="kivitendo-documentation" lang="de">
-  <title>kivitendo 3.9.2: Installation, Konfiguration,
+  <title>kivitendo 4.0.0: Installation, Konfiguration,
   Entwicklung</title>
 
   <chapter id="Aktuelle-Hinweise">
@@ -196,6 +196,10 @@
 
           <listitem>
             <para><literal>Config::Std</literal></para>
+          </listitem>
+
+          <listitem>
+            <para><literal>CryptX</literal></para>
           </listitem>
 
           <listitem>
@@ -419,6 +423,12 @@
           </listitem>
         </itemizedlist>
 
+        <para>In der Version v4.0.0 ist folgendes Paket hinzugekommen:
+          <literal>CryptX</literal>
+        </para>
+
+        <para>In der Version v3.9.2 sind keine neuen Pakete hinzugekommen.</para>
+
         <para>In der Version v3.9.1 sind keine neuen Pakete hinzugekommen.</para>
 
         <para>In der Version v3.9.0 sind die folgenden Pakete hinzugekommen:
@@ -507,7 +517,8 @@
   libdatetime-event-cron-perl libexception-class-perl \
   libxml-libxml-perl libtry-tiny-perl libmath-round-perl \
   libimager-perl libimager-qrcode-perl librest-client-perl libipc-run-perl \
-  libencode-imaputf7-perl libmail-imapclient-perl libuuid-tiny-perl
+  libencode-imaputf7-perl libmail-imapclient-perl libuuid-tiny-perl \
+  libcryptx-perl libauthen-sasl-perl
           </programlisting>
 
           <para>Sollten Pakete nicht zu Verfügung stehen, so können diese auch mittels CPAN installiert werden. Ferner muss für Ubuntu das Repository "Universe" aktiv sein (s.a. Anmerkungen).</para>
@@ -534,7 +545,7 @@
   perl-Params-Validate perl-Regexp-IPv6 perl-Rose-DB perl-Rose-DB-Object \
   perl-Rose-Object perl-Sort-Naturally perl-String-ShellQuote \
   perl-Template-Toolkit perl-Text-CSV_XS perl-Text-Iconv perl-URI perl-XML-Writer \
-  perl-YAML perl-libwww-perl</programlisting>
+  perl-YAML perl-libwww-perl perl-CryptX</programlisting>
         </sect3>
 
         <sect3>
@@ -10710,6 +10721,110 @@ $some_hash{42}    = 54;</programlisting>
           Konstrukte sollten lexikalisch lokal gehalten werden.</para>
         </listitem>
       </orderedlist>
+    </sect1>
+
+    <sect1 id="devel.design40.design-40-lesscss-anpassen">
+      <title>Design 4.0 Less/CSS Anpassen</title>
+      <sect2 id="devel.design40.einführung">
+        <title>Einführung</title>
+        <para>
+          Das Design 4.0 ist mit Less aufgebaut. Less erweitert CSS um
+          einige nützliche Funktionen. Mehr dazu siehe:
+          <ulink url="https://lesscss.org/">Getting started |
+          Less.js</ulink> (Englisch)
+        </para>
+        <para>
+          Die Less Dateien befinden sich unter:
+          <literal>css/design40/less</literal>
+        </para>
+      </sect2>
+      <sect2 id="devel.design40.less-kompilieren">
+        <title>Less kompilieren</title>
+        <para>
+          Da der Browser keine Less Dateien versteht müssen diese zu
+          CSS kompiliert werden. Der zu verwendende compiler heisst
+          <literal>lessc</literal>. Unter Debian kann dieser installiert werden
+          mit:
+        </para>
+        <programlisting>
+    sudo apt install node-less
+    </programlisting>
+        <para>
+          Zum Kompilieren der Dateien aus dem Verzeichnis der Less Dateien
+          den folgenden Befehl ausführen:
+        </para>
+        <programlisting>
+    lessc -x style.less ../style.css
+    </programlisting>
+        <para>
+          Dies produziert das neue Stylesheet oder gibt einen Fehler aus.
+        </para>
+      </sect2>
+      <sect2 id="devel.design40.lokale-anpassungen-nicht-entwicklung">
+        <title>Lokale Anpassungen (nicht Entwicklung)</title>
+        <para>
+          Für lokale Anpassungen sollten die folgenden Dateien verwendet
+          werden:
+        </para>
+        <itemizedlist spacing="compact">
+          <listitem>
+            <para>
+              custom-variables.less (überschreibt Variablen in
+              variables.less)
+            </para>
+          </listitem>
+          <listitem>
+            <para>
+              custom.less (überschreibt am Ende alle originalen
+              kivitendo Less Inhalte)
+            </para>
+          </listitem>
+        </itemizedlist>
+        <para>
+          Diese Dateien können leer sein, wenn Sie das originale kivitendo
+          Design nicht anpassen möchten. Die originalen Custom-Dateien enthalten
+          nur Kommentare und deaktivierten Beispielcode.
+        </para>
+        <para>
+          Nach dem Anpassen müssen die Less Dateien wie oben beschrieben neu
+          kompiliert werden.
+        </para>
+        <sect3 id="devel.design40.beispiel-für-anpassung-von-farben">
+          <title>Beispiel für Anpassung von Farben</title>
+          <para>
+            Siehe dazu die Beispieldatei unter:
+            <literal>css/design40/less/custom_less_variables-example.less</literal>
+          </para>
+          <figure>
+            <title>Screenshot mit einigen Variablennamen beschriftet</title>
+            <mediaobject>
+              <imageobject>
+                <imagedata fileref="images/kivitendo-color-variables.png" />
+              </imageobject>
+              <textobject><phrase>Screenshot mit einigen Variablennamen
+              beschriftet</phrase></textobject>
+            </mediaobject>
+          </figure>
+        </sect3>
+      </sect2>
+      <sect2 id="devel.design40.weiteres">
+        <title>Weiteres</title>
+        <para>
+          Weitere Informationen siehe auch:
+          <literal>css/design40/less/READ_ME.md</literal>
+        </para>
+        <para>
+          HTML Entwickler Dokumentation kivitendo CSS (Design 4.0) unter:
+          <emphasis>Developer Tools → CSS Dokumentation</emphasis>
+          (<literal>css/design40/manual/index.html</literal>)
+        </para>
+        <tip>
+          <para>
+            Die HTML Seiten können auch als Live Test Seiten für das
+            Design verwendet werden.
+          </para>
+        </tip>
+      </sect2>
     </sect1>
 
     <sect1 id="devel.build-doc" xreflabel="Dokumentation erstellen">

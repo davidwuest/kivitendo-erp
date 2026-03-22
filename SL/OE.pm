@@ -37,6 +37,7 @@ package OE;
 
 use List::Util qw(max first);
 
+use DateTime;
 use SL::AM;
 use SL::Common;
 use SL::CVar;
@@ -572,13 +573,22 @@ sub transactions_for_todo_list {
   my $query                  = qq|SELECT id FROM employee WHERE login = ?|;
   my ($e_id)                 = selectrow_query($form, $dbh, $query, $::myconfig{login});
 
-  my $sales_purchase_filter  = 'AND (1 = 0';
-  $sales_purchase_filter    .= $params{sales}    ? qq| OR customer_id IS NOT NULL| : '';
-  $sales_purchase_filter    .= $params{purchase} ? qq| OR vendor_id   IS NOT NULL| : '';
-  $sales_purchase_filter    .= ')';
+  my @record_types;
+  if ($params{orders_mode}) {
+    push @record_types, 'sales_order'       if $params{sales};
+    push @record_types, 'purchase_order'    if $params{purchase};
+  } else {
+    push @record_types, 'sales_quotation'   if $params{sales};
+    push @record_types, 'request_quotation' if $params{purchase};
+  }
+
+  my $record_types_filter    = '(' . join(' OR ', map { "oe.record_type = '$_'" } @record_types) . ') ';
+
+  my $config_days            = $::instance_conf->get_todo_oe_overdue_days;
+  my $reference_date         = DateTime->today_local->subtract(days => $config_days)->to_kivitendo;
 
   $query                     =
-    qq|SELECT oe.id, oe.transdate, oe.reqdate, oe.quonumber, oe.transaction_description, oe.amount,
+    qq|SELECT oe.id, oe.transdate, oe.reqdate, oe.ordnumber, oe.quonumber, oe.transaction_description, oe.amount,
          CASE WHEN (COALESCE(oe.customer_id, 0) = 0) THEN 'vendor' ELSE 'customer' END AS vc,
          c.name AS customer,
          v.name AS vendor,
@@ -587,15 +597,14 @@ sub transactions_for_todo_list {
        LEFT JOIN customer c ON (oe.customer_id = c.id)
        LEFT JOIN vendor v   ON (oe.vendor_id   = v.id)
        LEFT JOIN employee e ON (oe.employee_id = e.id)
-       WHERE ((oe.record_type = 'sales_quotation') OR (oe.record_type = 'request_quotation'))
+       WHERE $record_types_filter
          AND (COALESCE(closed,    FALSE) = FALSE)
          AND ((oe.employee_id = ?) OR (oe.salesman_id = ?))
          AND NOT (oe.reqdate ISNULL)
-         AND (oe.reqdate < current_date)
-         $sales_purchase_filter
+         AND (oe.reqdate < ?)
        ORDER BY transdate|;
 
-  my $quotations = selectall_hashref_query($form, $dbh, $query, $e_id, $e_id);
+  my $quotations = selectall_hashref_query($form, $dbh, $query, $e_id, $e_id, conv_date($reference_date));
 
   $main::lxdebug->leave_sub();
 
@@ -976,9 +985,9 @@ sub order_details {
   my $i;
   my @partsgroup = ();
   my $partsgroup;
-  my $position = 0;
-  my $subtotal_header = 0;
-  my $subposition = 0;
+  my $pos_level0 = 0;
+  my $pos_level1 = 0;
+  my $subtotal_active = 0;
   my %taxaccounts;
   my %taxbase;
   my $tax_rate;
@@ -1043,7 +1052,7 @@ sub order_details {
        discount discount_nofmt p_discount discount_sub discount_sub_nofmt nodiscount_sub nodiscount_sub_nofmt
        linetotal linetotal_nofmt nodiscount_linetotal nodiscount_linetotal_nofmt tax_rate projectnumber projectdescription
        price_factor price_factor_name partsgroup weight weight_nofmt lineweight lineweight_nofmt optional
-       partsgroup);
+       );
 
   push @arrays, map { "ic_cvar_$_->{name}" } @{ $ic_cvar_configs };
   push @arrays, map { "project_cvar_$_->{name}" } @{ $project_cvar_configs };
@@ -1070,20 +1079,17 @@ sub order_details {
     if ($form->{"id_$i"} != 0) {
 
       # add number, description and qty to $form->{number}, ....
-
-      if ($form->{"subtotal_$i"} && !$subtotal_header) {
-        $subtotal_header = $i;
-        $position = int($position);
-        $subposition = 0;
-        $position++;
-      } elsif ($subtotal_header) {
-        $subposition += 1;
-        $position = int($position);
-        $position = $position.".".$subposition;
+      my $position;
+      if (!$subtotal_active) {
+        $pos_level0 += 1;
+        $pos_level1  = 0;
+        $position = "$pos_level0";
       } else {
-        $position = int($position);
-        $position++;
+        $pos_level1 += 1;
+        $position = "$pos_level0.$pos_level1";
       }
+      my $subtotal_turn_off = $subtotal_active && $form->{"subtotal_$i"};
+      $subtotal_active ^= $form->{"subtotal_$i"};
 
       my $price_factor = $price_factors{$form->{"price_factor_id_$i"}} || { 'factor' => 1 };
 
@@ -1101,7 +1107,6 @@ sub order_details {
       push @{ $form->{TEMPLATE_ARRAYS}->{unit} },              $form->{"unit_$i"};
       push @{ $form->{TEMPLATE_ARRAYS}->{bin} },               $form->{"bin_$i"};
       push @{ $form->{TEMPLATE_ARRAYS}->{partnotes} },         $form->{"partnotes_$i"};
-      push @{ $form->{TEMPLATE_ARRAYS}->{partsgroup} },          $form->{"partsgroup_$i"};
       push @{ $form->{TEMPLATE_ARRAYS}->{serialnumber} },      $form->{"serialnumber_$i"};
       push @{ $form->{TEMPLATE_ARRAYS}->{reqdate} },           $form->{"reqdate_$i"};
       push @{ $form->{TEMPLATE_ARRAYS}->{sellprice} },         $form->{"sellprice_$i"};
@@ -1155,12 +1160,12 @@ sub order_details {
       $form->{nodiscount_total} += $nodiscount_linetotal;
       $form->{discount_total}   += $discount;
 
-      if ($subtotal_header) {
+      if ($subtotal_active) {
         $discount_subtotal   += $linetotal;
         $nodiscount_subtotal += $nodiscount_linetotal;
       }
 
-      if ($form->{"subtotal_$i"} && $subtotal_header && ($subtotal_header != $i)) {
+      if ($subtotal_turn_off) {
         push @{ $form->{TEMPLATE_ARRAYS}->{discount_sub} },         $form->format_amount($myconfig, $discount_subtotal,   2);
         push @{ $form->{TEMPLATE_ARRAYS}->{discount_sub_nofmt} },   $discount_subtotal;
         push @{ $form->{TEMPLATE_ARRAYS}->{nodiscount_sub} },       $form->format_amount($myconfig, $nodiscount_subtotal, 2);
@@ -1168,7 +1173,6 @@ sub order_details {
 
         $discount_subtotal   = 0;
         $nodiscount_subtotal = 0;
-        $subtotal_header     = 0;
 
       } else {
         push @{ $form->{TEMPLATE_ARRAYS}->{$_} }, "" for qw(discount_sub nodiscount_sub discount_sub_nofmt nodiscount_sub_nofmt);
@@ -1348,11 +1352,5 @@ OE.pm - Order entry module
 =head1 DESCRIPTION
 
 OE.pm is part of the OE module. OE is responsible for sales and purchase orders, as well as sales quotations and purchase requests. This file abstracts the database tables C<oe> and C<orderitems>.
-
-=head1 FUNCTIONS
-
-=over 4
-
-=back
 
 =cut

@@ -240,8 +240,6 @@ sub add {
   $form->{credit} = 0;
   $form->{tax}    = 0;
 
-  $::form->{ALL_DEPARTMENTS} = SL::DB::Manager::Department->get_all_sorted;
-
   $form->{show_details} = $myconfig{show_form_details} unless defined $form->{show_details};
 
   if (!$form->{form_validity_token}) {
@@ -284,8 +282,6 @@ sub prepare_transaction {
   GL->transaction(\%myconfig, \%$form);
 
   $form->{amount} = $form->format_amount(\%myconfig, $form->{amount}, 2);
-
-  $::form->{ALL_DEPARTMENTS} = SL::DB::Manager::Department->get_all_sorted;
 
   my $i        = 1;
   my $tax      = 0;
@@ -485,6 +481,10 @@ sub generate_report {
   push @date_options, $locale->text('Bis'),  $locale->date(\%myconfig, $form->{dateto},   1)          if ($form->{dateto});
   push @options,      join(' ', @date_options)                                                        if (scalar @date_options);
 
+  if ($form->{project_id}) {
+    my $project = SL::DB::Manager::Project->find_by( id => $form->{project_id} );
+    push @options, $locale->text('Project') . " : " . $project->displayable_name;
+  }
   if ($form->{department_id}) {
     my $department = SL::DB::Manager::Department->find_by( id => $form->{department_id} );
     push @options, $locale->text('Department') . " : " . $department->description;
@@ -931,7 +931,6 @@ sub display_rows {
       <td><input type=hidden name="fx_transaction_$i" value="$checked">$x</td>
     |;
         }
-        $form->hide_form("accno_$i");
 
       } else {
         if ($form->{transfer}) {
@@ -972,6 +971,14 @@ sub display_rows {
     <td><input type="hidden" name="tax_$i" value="$form->{"tax_$i"}">$form->{"tax_$i"}</td>
     $tax_ddbox|;
 
+    if ($i < $form->{rowcount}) {
+      print qq|
+  <td class="hidden">
+|;
+      $form->hide_form("accno_$i");
+      print qq|  </td>|;
+    }
+
     if ($form->{show_details}) {
       print qq|
     $source
@@ -980,9 +987,11 @@ sub display_rows {
 |;
     } else {
     print qq|
+    <td class="hidden">
     $source_hidden
     $memo_hidden
     $projectnumber_hidden
+    </td>
     |;
     }
     print qq|
@@ -990,7 +999,13 @@ sub display_rows {
 |;
   }
 
+  print qq|  <tr class="hidden">
+   <td>
+  |;
   $form->hide_form(qw(rowcount selectaccno));
+  print qq|   </td>
+  </tr>
+  |;
 
   $main::lxdebug->leave_sub();
 
@@ -1176,10 +1191,6 @@ sub form_header {
   my ($init) = @_;
 
   $::request->layout->add_javascripts("autocomplete_chart.js", "autocomplete_project.js", "kivi.File.js", "kivi.GL.js", "kivi.RecordTemplate.js", "kivi.Validator.js", "show_history.js");
-
-  my @old_project_ids     = grep { $_ } map{ $::form->{"project_id_$_"} } 1..$::form->{rowcount};
-  my @conditions          = @old_project_ids ? (id => \@old_project_ids) : ();
-  $::form->{ALL_PROJECTS} = SL::DB::Manager::Project->get_all_sorted(query => [ or => [ active => 1, @conditions ]]);
 
   $::form->get_lists(
     "charts"    => { "key" => "ALL_CHARTS", "transdate" => $::form->{transdate} },

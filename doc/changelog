@@ -5,6 +5,93 @@
 202x-xx-xx - Release x.x.x
 
 Größere neue Features:
+
+Mittelgroße neue Features:
+
+- Verbundene Kunden/Lieferanten
+  Man kann jetzt Kunden und Lieferanten verbinden und so Geschäftspartner
+  abbilden, die in beiden Rollen auftreten. Dabei werden dann die Name, Straße
+  Stadt, Postleitzahl, Land, Währung, Steuerzone, Steuernummer, Steuergruppe,
+  UStID, Homepage, Sprache, Telefon, Fax, E-Mail und Ungültig zwischen beiden
+  synchronisiert. Benutzerdefinierte Variablen können einzeln für die
+  Synchronisation freigegeben werden.
+
+- Einkaufsrechnungssuche: Erweiterung um personenbezogene
+  Suchprofile. Jede Person kann nun die Optionen so setzen, wie sie
+  sie benötigt, und als Suchprofile speichern. Ein Suchprofil kann als
+  Standardprofil festgelegt werden, wodurch die darin enthaltenen
+  Einstellungen bei jedem Aufruf der Einkaufsrechnungssuche
+  standardmäßig gesetzt werden.
+
+Kleinere neue Features und Detailverbesserungen:
+
+- Im Bericht VK-Rechnungen/Debitorenbuchungen und
+  EK-Rechnungen/Kreditorenbuchungen wird neben der Projektnummer des Belegs
+  auch die Projektbeschreibung angezeigt und es kann nach Nummer und
+  Beschreibung des Projekt sortiert werden.
+
+- Factur-X/ZUGFeRD/XRechnung: Anhebung der unterstützten Version von
+  XRechnung auf 3.0 inklusive der dafür nötigen Anpassungen an der
+  Menge der exportierten Daten. Damit einhergehend ist erforderlich,
+  dass einige Daten in der Mandantenkonfiguration bzw. den
+  Kundenstammdaten gesetzt sind:
+  - Mandantenkonfiguration: »E-Mail des Rechnungsempfängers« auf dem
+    »Features«-Tab
+  - Kundenstammdaten: »E-Mail des Rechnungsempfängers«, »E-Mail« oder
+    »GLN« auf dem Tab »Rechnungsadresse«
+
+- Factur-X/ZUGFeRD/XRechnung: beim Speichern von Aufträgen mit aktiven
+  wiederkehrenden Rechnungen wird eine Prüfung durchgeführt, ob für
+  daraus erzeugte Rechnungen die Factur-X/ZUGFeRD/XRechnungs-Daten
+  erzeugt werden können, oder ob Daten fehlen. Falls lezteres, wird
+  eine Warnung angezeigt.
+
+- ZUGFeRD-Export: Unterstützung für abweichende Lieferadresse und Referenz auf
+  Lieferschein.
+
+- experimenteller CAMT.053 Bankimport
+  Zusätzlich zum bisherigen MT940 Format können jetzt Bankauszüge auch im
+  CAMT.053 Format importiert werden.
+
+- PDF-Anhänge von Mahnungen werden in ein PDF zusammengeführt
+  betrifft Mahnungen bei welchen die Ursprungsrechnung mitgeschickt wird.
+
+- In der Aufgabenliste lassen sich nun auch Aufträge (VK/EK) anzeigen.
+  Zudem lässt sich in der Benutzereinstellung getrennt nach Belegtypen wählen,
+  ob und wann (Login und/oder Menüpunkt bei Produktivität) diese angezeigt
+  werden sollen.
+
+- In der Mandantenkonfiguration lässt sich ein Intervall in Tagen angeben,
+  ab welchen die Angebote/Aufträge für die Aufgabenliste als überfällig
+  gelten.
+
+
+Bugfixes (Tracker: https://www.kivitendo.de/redmine/projects/forum/issues/):
+
+- XRechnung: beim Herunterladen der XRechnung-XML-Datei beginnt der
+  Dateiname nun mit »xrechnung_« und nicht mehr mit »factur-x_«.
+
+Github-Issues (https://github.com/kivitendo/kivitendo-erp/issues/):
+
+## Änderungshistorie laut Github  (https://github.com/kivitendo/kivitendo-erp/)
+
+#631 2025 linked customer vendor
+#645 CAMT.053 - Erste Version
+#657 202511 fix requirement spec discount
+#677 20251204 factur x fixes
+#685 SMTP EHLO Header konfigurierbar
+#699 Debitorenbuchung: HTML: weitere Input-Tags in table nicht ausserhalb von tr/td
+#701 Mahnungen: PDFs für Mail-Anhang in einer Datei
+#702 Unit-Test datev/encoding: check_text wird nicht exportiert
+#706 2026 remove algorithm checkdigits override
+#707 202602 zugferd ship to trade party 2
+#711 test: neuer Test um zu prüfen ob irgendwo in den sql/Pg-upgrade Tests SL::DB::Object verwendet wird
+
+
+
+2025-11-17 - Release 4.0.0
+
+Größere neue Features:
 - Die Stilvorlagen kivitendo.css und lx-office-erp.css wurden komplett entfernt.
 
 Mittelgroße neue Features:
@@ -23,8 +110,42 @@ Kleinere neue Features und Detailverbesserungen:
 
 - Gesamt- und Zwischensummen werden im Mahnungsbericht angezeigt.
 
-Bugfixes (Tracker: https://www.kivitendo.de/redmine) / Github-Issues /
-Änderungshistorie laut Github  (https://github.com/kivitendo/kivitendo-erp/):
+- Rechnungen mit Nicht-Euro-Währung nicht für einen SEPA-Einzug oder
+  eine SEPA-Überweisung zur Auswahl anbieten.
+
+- Lieferplan um das Feld Status u. Vorgangsbezeichnung des Auftrags und Mikrofilm
+  erweitert und nach Vorgangsbezeichnis filterbar gemacht.
+
+- Beim E-Mail-Versand von Belegen wird abhängig von der Mandanteneinstellung
+  "Belegausdruck mitschicken: bevorzuge Erzeugung eines neuen Belegs"
+  standardmäßig ein neuer Belegausdruck erstellt und verschickt (zuvor
+  wurde standardmäßig der zuletzt erstellte Belegausdruck verwendet).
+
+- Im Artikelstamm bei den Warenbeständen den Wert der Ware korrekt berechnen
+  wenn ein Preisfaktor gesetzt ist.
+
+- Beim Lagerbuchungsbericht Zu- und Abnahme der Menge mit + und - zusätzlich
+  visualisiert.
+
+- Beim Produzieren von Erzeugnissen darf man auch Erzeugnisbestandteile mit der
+  Menge 0 verbauen. Konfigurierbar in der Mandantenkonfiguration, standardmäßig
+  deaktiviert.
+
+Bugfixes (Tracker: https://www.kivitendo.de/redmine/projects/forum/issues/):
+755 CSV-Import für Auftrage: Fehler, wenn record_type fehlt
+710 Bericht Lagerbuchungen zeigt nur Ein- und auslagerte Bucheungen und nicht die Umlagerungen
+577 locales-Lauf meldet unbenutztes Template "common/toggle-buttons-for-wrapper.html"
+575 Artikelbeschreibung wird von der Artikeleingabe nicht übernommen (Angebot, Auftrag, Reklamation)
+554 Artikelbeschreibung ändern beim Hinzufügen zum Beleg
+552 design4.0 Drehendes Rad bei Tasks (bspw. Task ausführen) verschiebt die Schnellsuchen
+
+Github-Issues (https://github.com/kivitendo/kivitendo-erp/issues/):
+#591 Gesamt- und Zwischensumme im Mahnungsbericht anzeigen
+#521 Sortierung im Bericht Lager->Berichte->Lagerbuchungen teilweise kaputt
+#514 <%mandator_id%> wird nicht bei wiederkehrenden Rechnungen ersetzt. Normale Rechnungen geht es.
+#500 Design 4.0 kein Padding beim Suchergebniss der Artikelsuche
+#493 ZUGfERD X-Rechnung PDF-Rechnung kann nicht imortiert werden xml geht
+#471 Bericht Beistelllieferscheine ohne Lieferanteninfo
 
 
 2025-04-29 - Release 3.9.2

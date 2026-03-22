@@ -108,6 +108,16 @@
         <td class="long-desc">[% LxERP.t8('Preselect all documents saved for the current record as a mail attachment.') %]</td>
       </tr>
       <tr>
+        <th>[% LxERP.t8('Preselect project documents as email attachments') %]</th>
+        <td>[% L.yes_no_tag('defaults.email_attachment_project_files_checked', SELF.defaults.email_attachment_project_files_checked) %]</td>
+        <td class="long-desc">[% LxERP.t8('Preselect all documents saved for the current record\'s project as a mail attachment.') %]</td>
+      </tr>
+      <tr>
+        <th>[% LxERP.t8('Send printout of record: prefer creating a new printout') %]</th>
+        <td>[% L.yes_no_tag('defaults.email_default_create_new_record_checked', SELF.defaults.email_default_create_new_record_checked) %]</td>
+        <td class="long-desc">[% LxERP.t8('By default, create and send a new record as a mail attachment.') %]</td>
+      </tr>
+      <tr>
         <th class="caption" colspan="3">[% LxERP.t8("Storage Backends") %]</th>
       </tr>
       <tr>
@@ -219,6 +229,13 @@
         <th>[% LxERP.t8('Email Subject Transaction Description') %]</th>
         <td> [% L.yes_no_tag('defaults.email_subject_transaction_description', SELF.defaults.email_subject_transaction_description) %] </td>
         <td class="long-desc"> [% LxERP.t8('Include the transaction description in the preset email subject.') %] </td>
+      </tr>
+      <tr>
+        <th>[% LxERP.t8('Email of the invoice recipient') %]</th>
+        <td colspan="2">
+          [% L.input_tag('defaults.invoice_mail', SELF.defaults.invoice_mail) %]
+          <div class ="description">[% 'Used in Factur-X/ZUGFeRD & XRechnung invoice data for the seller party\'s contact information' | $T8 %]</div>
+        </td>
       </tr>
         <tr>
         <th class="caption" colspan="3">[% LxERP.t8("SEPA") %]</th>
@@ -395,7 +412,7 @@
        <td>[% L.select_tag("defaults.create_zugferd_invoices", SELF.zugferd_settings, default=SELF.defaults.create_zugferd_invoices) %]</td>
        <td class="long-desc">
          [% LxERP.t8("If enabled Factur-X/ZUGFeRD conformant sales invoice PDFs will be created.") %]
-         [% LxERP.t8("If the test mode is enabled, the Factur-X/ZUGFeRD invoices will be flagged so that they're only fit to be used for testing purposes.") %]
+         [% LxERP.t8("If the test mode is enabled, the Factur-X/ZUGFeRD/XRechnung invoices will be flagged so that they're only fit to be used for testing purposes.") %]
        </td>
       </tr>
       <tr>
@@ -433,6 +450,11 @@
         <th>[% LxERP.t8("Item input position for quotations and orders") %]</th>
         <td>[% L.select_tag("defaults.order_item_input_position", [ [ 0, LxERP.t8('above the positions'), ], [ 1, LxERP.t8('below the positions') ] ], default=SELF.defaults.order_item_input_position) %]</td>
         <td>[% LxERP.t8("Controls whether the default item input is above (default) or below the positions list in orders and quotations. Can be overridden by user preferences.") %]</td>
+      </tr>
+      <tr>
+        <th>[% LxERP.t8("Overdue interval in days for TODO list") %]</th>
+        <td>[% L.input_tag("defaults.todo_oe_overdue_days_as_number", SELF.defaults.todo_oe_overdue_days_as_number, class="numeric wi-small") %]</td>
+        <td>[% LxERP.t8("Quotations and orders are considered overdue for the TODO list if they are not closed and the valid until or the reqdate exceeded the specified number of days.") %]</td>
       </tr>
       <tr>
         <th class="caption" colspan="3">[% 'Show certain sales and purchase documents' | $T8 %]</th>

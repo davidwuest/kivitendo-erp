@@ -12,6 +12,8 @@ namespace("kivi.Flash", function(ns) {
     if (kivi.Materialize)
       return kivi.Materialize.display_flash(type, message, details, timestamp);
 
+    // if flashes are hidden: show them again
+    ns.show_all();
 
     let $dom = $('<div>');
     $dom.addClass('layout-flash-' + type);
@@ -67,6 +69,8 @@ namespace("kivi.Flash", function(ns) {
     $dom.delay(60000).fadeOut('slow');
 
     ns.show();
+    ns.update_indicator();
+    ns.shake_bell();
   };
 
   ns.display_flash_detail = function(type, message) {
@@ -92,14 +96,37 @@ namespace("kivi.Flash", function(ns) {
     } else {
       $('div.layout-flash-message').remove();
     }
+    ns.update_indicator();
   };
 
   ns.remove_entry = function(e) {
     $(e.target).closest('div.layout-flash-message').remove();
+    ns.update_indicator();
   };
 
   ns.toggle = function() {
-    $('#layout_flash_container').toggle();
+    // don't use builtin toggle because fadeout might have hidden all entries
+    // in that case show instead
+    if ($('#layout_flash_container .layout-flash-message:visible').length == 0) {
+      $('#layout_flash_container .layout-flash-message').show();
+      $('#layout_flash_container').show();
+    } else {
+      $('#layout_flash_container').toggle();
+    }
+  };
+  ns.show_all = function() {
+    $('#layout_flash_container').show();
+    $('#layout_flash_container .layout-flash-message').show();
+  };
+  ns.hide_all_with_bell = function() {
+    if ($('#layout_flash_container .layout-flash-message:visible').length > 0) {
+      ns.hide_all();
+      ns.shake_bell();
+    }
+  };
+  ns.hide_all = function() {
+    $('#layout_flash_container').slideUp(100);
+    ns.shake_bell();
   };
   ns.show = function() {
     if (kivi.Materialize) return; // materialize doesn't have a show/hide all
@@ -113,7 +140,14 @@ namespace("kivi.Flash", function(ns) {
   };
   ns.reload_flash = function() {
     $.get("controller.pl", { action: "Flash/reload" }, kivi.eval_json_result);
+    ns.update_indicator();
   };
+  ns.update_indicator = function() {
+    $('.layout-flash-number').html($('#layout_flash_container .layout-flash-message').length);
+  }
+  ns.shake_bell = function() {
+    $('.layout-flash-toggle img').addClass('shake').one('animationend', () => $('.layout-flash-toggle img').removeClass('shake'));
+  }
 
   ns.reinit_widgets = function() {
 
@@ -130,4 +164,7 @@ $(function() {
 
   $('.layout-flash-toggle').click(kivi.Flash.toggle);
   $('#layout_flash_container').on('click', '.layout-flash-remove', kivi.Flash.remove_entry);
+
+  // hide flash if main menu is clicked
+  $('#main_menu_div').click(kivi.Flash.hide_all_with_bell);
 });

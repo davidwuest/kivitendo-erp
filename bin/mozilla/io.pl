@@ -57,6 +57,7 @@ use SL::Presenter::Part;
 use SL::Presenter::Chart;
 use SL::Presenter::Tag;
 use SL::Util qw(trim);
+use SL::ZUGFeRD;
 
 use SL::DB::AuthUser;
 use SL::DB::Contact;
@@ -260,6 +261,9 @@ sub display_row {
   # rows
 
   my @ROWS;
+  my $pos_level0 = 0;
+  my $pos_level1 = 0;
+  my $subtotal_active = 0;
   for my $i (1 .. $numrows) {
     my %column_data = ();
 
@@ -318,10 +322,22 @@ sub display_row {
     my $linetotal      = $form->round_amount($form->{"qty_$i"} * $form->{"sellprice_$i"} * (100 - $form->{"discount_$i"}) / 100 / $price_factor, 2);
     my $rows            = $form->numtextrows($form->{"description_$i"}, 30, 6);
 
+    my $position;
+    if (!$subtotal_active) {
+      $pos_level0 += 1;
+      $pos_level1  = 0;
+      $position = "$pos_level0";
+    } else {
+      $pos_level1 += 1;
+      $position = "$pos_level0.$pos_level1";
+    }
+    $subtotal_active ^= $form->{"subtotal_$i"};
+
     # quick delete single row
-    $column_data{runningnumber}  = q|<a onclick= "$('#partnumber_| . $i . q|').val(''); $('#update_button').click();">| .
+    $column_data{runningnumber} = SL::Presenter::Tag::checkbox_tag('', value => $i, class => 'deletion_checkbox tooltipster-html', title => t8('delete'));
+    $column_data{runningnumber} .= q|<a onclick= "$('#partnumber_| . $i . q|').val(''); $('#update_button').click();">| .
                                    q|<img class="icon-delete" alt="| . $locale->text('Remove') . q|"></a> |;
-    $column_data{runningnumber} .= $cgi->textfield(-name => "runningnumber_$i", -id => "runningnumber_$i", -size => 5,  -value => $i);    # HuT
+    $column_data{runningnumber} .= $cgi->textfield(-name => "runningnumber_$i", -id => "runningnumber_$i", -size => 5,  -value => $position);    # HuT
 
 
     $column_data{partnumber}    = $cgi->textfield(-name => "partnumber_$i",    -id => "partnumber_$i",    -size => 12, -value => $form->{"partnumber_$i"});
@@ -1450,7 +1466,7 @@ sub print_form {
     $form->{TEMPLATE_DRIVER_OPTIONS}->{variable_content_types} = $form->get_variable_content_types();
   }
 
-  if ($form->{format} =~ m{pdf}) {
+  if ($form->{format} =~ m{pdf} && !$form->{preview}) {
     _maybe_attach_zugferd_data($form);
   }
 
@@ -2359,11 +2375,7 @@ sub _maybe_attach_zugferd_data {
         mime_type    => 'text/xml',
       }
     ];
-  };
-
-  if (my $e = SL::X::ZUGFeRDValidation->caught) {
-    $::form->error($e->message);
-  }
+  } or do { $::form->error($@) };
 }
 
 sub download_factur_x_xml {
@@ -2378,13 +2390,10 @@ sub download_factur_x_xml {
       || !$record->can('create_zugferd_data')
       || !$record->customer->create_zugferd_invoices_for_this_customer;
 
-  my $xml_content = eval { $record->create_zugferd_data };
-
-  if (my $e = SL::X::ZUGFeRDValidation->caught) {
-    $::form->error($e->message);
-  }
-
-  my $attachment_filename = "factur-x_" . $::form->generate_attachment_filename;
+  my $xml_content         = eval { $record->create_zugferd_data } or do { $::form->error($@) };
+  my %factur_x_settings   = SL::ZUGFeRD->convert_customer_setting($record->customer->create_zugferd_invoices_for_this_customer);
+  my $prefix              = $factur_x_settings{profile} == SL::ZUGFeRD::PROFILE_XRECHNUNG() ? "xrechnung" : "factur-x";
+  my $attachment_filename = "${prefix}_" . $::form->generate_attachment_filename;
   $attachment_filename    =~ s{\.[^.]+$}{.xml};
   my %headers             = (
     '-type'           => 'application/xml',

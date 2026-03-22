@@ -20,20 +20,17 @@ use SL::VATIDNr;
 use SL::ZUGFeRD qw(:PROFILES);
 use SL::Locale::String qw(t8);
 
-use Algorithm::CheckDigits ();
 use Carp;
 use Encode qw(encode);
-use List::MoreUtils qw(any pairwise);
-use List::Util qw(first sum);
+use List::MoreUtils qw(any);
+use List::Util qw(first sum sum0);
 use Template;
 use XML::Writer;
 use Params::Validate qw(:all);
 
-my @line_names = qw(LineOne LineTwo LineThree);
-
 my %standards_ids = (
   PROFILE_FACTURX_EXTENDED() => 'urn:cen.eu:en16931:2017#conformant#urn:factur-x.eu:1p0:extended',
-  PROFILE_XRECHNUNG()        => 'urn:cen.eu:en16931:2017#compliant#urn:xoev-de:kosit:standard:xrechnung_2.0',
+  PROFILE_XRECHNUNG()        => 'urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0',
 );
 
 sub _is_profile {
@@ -51,12 +48,17 @@ sub _r2 {
   return $::form->round_amount($value, 2);
 }
 
-sub _type_name {
-  my ($self) = @_;
-  my $type   = $self->invoice_type;
+sub _parts_to_lines {
+  my (@parts) = @_;
 
-  no warnings 'once';
-  return $type eq 'ar_transaction' ? $::locale->text('Invoice') : $self->displayable_type;
+  my @line_names = qw(LineOne LineTwo LineThree);
+
+  die "too much parts for lines" if scalar @parts > scalar @line_names;
+
+  my @lines;
+  push @lines, [$line_names[$_], $parts[$_]] for (0..$#parts);
+
+  return @lines;
 }
 
 sub _type_code {
@@ -92,7 +94,7 @@ sub _parse_our_address {
   my @street = grep { $_ } ($::instance_conf->get_address_street1, $::instance_conf->get_address_street2);
 
   push @result, [ 'PostcodeCode', $::instance_conf->get_address_zipcode ] if $::instance_conf->get_address_zipcode;
-  push @result, grep { $_->[1] } pairwise { [ $a, $b] } @line_names, @street;
+  push @result, _parts_to_lines(@street);
   push @result, [ 'CityName', $::instance_conf->get_address_city ] if $::instance_conf->get_address_city;
   push @result, [ 'CountryID', SL::Helper::ISO3166::map_name_to_alpha_2_code($::instance_conf->get_address_country) // 'DE' ];
 
@@ -108,7 +110,10 @@ sub _buyer_contact_information {
   $params{xml}->startTag("ram:DefinedTradeContact");
 
   $params{xml}->dataElement("ram:PersonName", _u8(join(" ", $contact->cp_givenname, $contact->cp_name)));
-  $params{xml}->dataElement("ram:DepartmentName", _u8($contact->cp_abteilung));
+
+  if ($contact->cp_abteilung) {
+    $params{xml}->dataElement("ram:DepartmentName", _u8($contact->cp_abteilung));
+  }
 
   my $phone_number = first {$_} (
     $contact->cp_phone1,
@@ -154,11 +159,55 @@ sub _customer_postal_trade_address {
   my @parts = grep { $_ } map { $params{customer}->$_ } qw(department_1 department_2 street);
 
   $params{xml}->dataElement("ram:PostcodeCode", _u8($params{customer}->zipcode));
-  $params{xml}->dataElement("ram:" . $_->[0],   _u8($_->[1])) for grep { $_->[1] } pairwise { [ $a, $b] } @line_names, @parts;
+  $params{xml}->dataElement("ram:" . $_->[0],   _u8($_->[1])) for _parts_to_lines(@parts);
   $params{xml}->dataElement("ram:CityName",     _u8($params{customer}->city));
   $params{xml}->dataElement("ram:CountryID",    _u8(SL::Helper::ISO3166::map_name_to_alpha_2_code($params{customer}->country) // 'DE'));
   $params{xml}->endTag;
   #       </ram:PostalTradeAddress>
+}
+
+sub _shipto_postal_trade_address {
+  my (%params) = @_;
+
+  #       <ram:PostalTradeAddress>
+  $params{xml}->startTag("ram:PostalTradeAddress");
+
+  my @parts = grep { $_ } map { $params{shipto}->$_ } qw(shiptodepartment_1 shiptodepartment_2 shiptostreet);
+
+  $params{xml}->dataElement("ram:PostcodeCode", _u8($params{shipto}->shiptozipcode));
+  $params{xml}->dataElement("ram:" . $_->[0],   _u8($_->[1])) for _parts_to_lines(@parts);
+
+  $params{xml}->dataElement("ram:CityName",     _u8($params{shipto}->shiptocity));
+  $params{xml}->dataElement("ram:CountryID",    _u8(SL::Helper::ISO3166::map_name_to_alpha_2_code($params{shipto}->shiptocountry) // 'DE'));
+  $params{xml}->endTag;
+  #       </ram:PostalTradeAddress>
+}
+
+sub _shipto_trade_party {
+  my ($self, %params) = @_;
+
+  my $shipto = first { $_ } (
+    $self->custom_shipto,
+    $self->shipto
+  );
+
+  return if !$shipto;
+
+  #       <ram:ShipToTradeParty>
+  $params{xml}->startTag("ram:ShipToTradeParty");
+
+  if ($shipto->shiptogln) {
+    $params{xml}->dataElement("ram:ID", _u8($shipto->shiptogln), schemeID => '0088');
+  }
+
+  if ($shipto->shiptoname) {
+    $params{xml}->dataElement("ram:Name", _u8($shipto->shiptoname));
+  }
+
+  _shipto_postal_trade_address(%params, shipto => $shipto);
+
+  $params{xml}->endTag;
+  #       </ram:ShipToTradeParty>
 }
 
 sub _buyer_communication {
@@ -231,10 +280,10 @@ sub _line_item {
 
   $params{xml}->startTag("ram:SpecifiedLineTradeAgreement");
   $params{xml}->startTag("ram:GrossPriceProductTradePrice");
-  $params{xml}->dataElement("ram:ChargeAmount", _r2($item_ptc->{sellprice}));
+  $params{xml}->dataElement("ram:ChargeAmount", $item_ptc->{sellprice});
   $params{xml}->endTag;
   $params{xml}->startTag("ram:NetPriceProductTradePrice");
-  $params{xml}->dataElement("ram:ChargeAmount", _r2($item_ptc->{sellprice}));
+  $params{xml}->dataElement("ram:ChargeAmount", $item_ptc->{sellprice});
   $params{xml}->endTag;
   $params{xml}->endTag;
   #   </ram:SpecifiedLineTradeAgreement>
@@ -294,30 +343,26 @@ sub _specified_trade_settlement_payment_means {
 sub _taxes {
   my ($self, %params) = @_;
 
-  my %taxkey_info;
+  my @taxes;
+  my $pat   = $params{ptc_data};
+  foreach my $tax_id (keys %{ $pat->{taxes_by_tax_id} }) {
+    my $netamount = sum0 map { $pat->{amounts}->{$_}->{amount} } grep { $pat->{amounts}->{$_}->{tax_id} == $tax_id } keys %{ $pat->{amounts} };
 
-  foreach my $item (@{ $params{ptc_data}->{items} }) {
-    $taxkey_info{$item->{taxkey_id}} //= {
-      linetotal  => 0,
-      tax_amount => 0,
-    };
-    my $info             = $taxkey_info{$item->{taxkey_id}};
-    $info->{taxkey}    //= SL::DB::TaxKey->load_cached($item->{taxkey_id});
-    $info->{tax}       //= SL::DB::Tax->load_cached($info->{taxkey}->tax_id);
-    $info->{linetotal}  += $item->{linetotal};
+    push(@taxes, { amount    => $pat->{taxes_by_tax_id}->{$tax_id},
+                   netamount => $netamount,
+                   tax       => SL::DB::Tax->new(id => $tax_id)->load });
   }
 
-  foreach my $taxkey_id (sort keys %taxkey_info) {
-    my $info     = $taxkey_info{$taxkey_id};
-    my %tax_info = _tax_rate_and_code($self->taxzone, $info->{tax});
+  foreach my $taxinfo (@taxes) {
+    my %rate_and_code = _tax_rate_and_code($self->taxzone, $taxinfo->{tax});
 
     #     <ram:ApplicableTradeTax>
     $params{xml}->startTag("ram:ApplicableTradeTax");
-    $params{xml}->dataElement("ram:CalculatedAmount",      _r2($params{ptc_data}->{taxes_by_tax_id}->{$info->{taxkey}->tax_id}));
+    $params{xml}->dataElement("ram:CalculatedAmount",      _r2($taxinfo->{amount}));
     $params{xml}->dataElement("ram:TypeCode",              "VAT");
-    $params{xml}->dataElement("ram:BasisAmount",           _r2($info->{linetotal}));
-    $params{xml}->dataElement("ram:CategoryCode",          $tax_info{code});
-    $params{xml}->dataElement("ram:RateApplicablePercent", _r2($tax_info{rate}));
+    $params{xml}->dataElement("ram:BasisAmount",           _r2($taxinfo->{netamount}));
+    $params{xml}->dataElement("ram:CategoryCode",          $rate_and_code{code});
+    $params{xml}->dataElement("ram:RateApplicablePercent", _r2($rate_and_code{rate}));
     $params{xml}->endTag;
     #     </ram:ApplicableTradeTax>
   }
@@ -465,6 +510,15 @@ sub _exchanged_document_context {
     $params{xml}->endTag;
   }
 
+  # According to XRechnung 3.0.x the customer can optionally request a
+  # different business process identifier. The default should be fine
+  # for most customers. If any of ours requests to make this
+  # configurable, we'll move the configuration into the customer base
+  # data, just like the ZUGFeRD/XRechnung version selector itself.
+  $params{xml}->startTag("ram:BusinessProcessSpecifiedDocumentContextParameter");
+  $params{xml}->dataElement("ram:ID", 'urn:fdc:peppol.eu:2017:poacc:billing:01:1.0');
+  $params{xml}->endTag;
+
   $params{xml}->startTag("ram:GuidelineSpecifiedDocumentContextParameter");
   $params{xml}->dataElement("ram:ID", $standards_ids{ $self->{_zugferd}->{profile} });
   $params{xml}->endTag;
@@ -487,7 +541,6 @@ sub _exchanged_document {
   $params{xml}->startTag("rsm:ExchangedDocument");
 
   $params{xml}->dataElement("ram:ID",       _u8($self->invnumber));
-  $params{xml}->dataElement("ram:Name",     _u8(_type_name($self))) if _is_profile($self, PROFILE_FACTURX_EXTENDED());
   $params{xml}->dataElement("ram:TypeCode", _u8(_type_code($self)));
 
   #     <ram:IssueDateTime>
@@ -502,7 +555,7 @@ sub _exchanged_document {
     $params{xml}->dataElement("ram:LanguageID", uc($1));
   }
 
-  require SL::DB::Manager::GenericTranslation;
+  require SL::DB::GenericTranslation;
   my $std_notes = SL::DB::Manager::GenericTranslation->get_all(
     where => [
       translation_type => 'ZUGFeRD/notes',
@@ -593,6 +646,11 @@ sub _seller_trade_party {
     #         </ram:PostalTradeAddress>
   }
 
+  # BT-34
+  $params{xml}->startTag("ram:URIUniversalCommunication");
+  $params{xml}->dataElement("ram:URIID", _u8($::instance_conf->get_invoice_mail), schemeID => 'EM');
+  $params{xml}->endTag;
+
   _specified_tax_registration($::instance_conf->get_co_ustid, %params);
 
   $params{xml}->endTag;
@@ -636,18 +694,11 @@ sub _applicable_header_trade_agreement {
   #     <ram:ApplicableHeaderTradeAgreement>
   $params{xml}->startTag("ram:ApplicableHeaderTradeAgreement");
 
-  # BuyerReference must always be given in XRechnung v3.0.2 BT-10.
-  # Factur-X doesn't really say anything about it and only has it as optional in the schema.
-  # Technically this means that the Factur-X:conformant profile doesn't have to include it, but validators seem to be overzealous here.
-  # To be on the safe side put a fallback in there for conformant profiles, but be strict about it in XRechnung compliant profiles.
-  if ($standards_ids{ $self->{_zugferd}->{profile} } =~ /compliant/) {
-    if (!defined $self->customer->c_vendor_routing_id) {
-      die t8("Can not create an EN16931 compliant ZUGFeRD export without a routing id (Leitweg ID)");
-    } else {
-      $params{xml}->dataElement("ram:BuyerReference", _u8($self->customer->c_vendor_routing_id));
-    }
-  } else {
-    my $buyer_reference = $self->customer->c_vendor_routing_id || $self->cusordnumber || $self->customer->ustid || '';
+  # BT-10 BuyerReference must always be given in XRechnung
+  # v3.0.2. validate_zugferd_data already checks for it.  Optional in
+  # Factur-X.
+  my $buyer_reference = first { ($_ // '') ne '' } ($self->customer->c_vendor_routing_id, $self->cusordnumber, $self->customer->ustid);
+  if ($buyer_reference) {
     $params{xml}->dataElement("ram:BuyerReference", _u8($buyer_reference));
   }
 
@@ -671,6 +722,9 @@ sub _applicable_header_trade_delivery {
 
   #     <ram:ApplicableHeaderTradeDelivery>
   $params{xml}->startTag("ram:ApplicableHeaderTradeDelivery");
+
+  _shipto_trade_party($self, %params);
+
   #       <ram:ActualDeliverySupplyChainEvent>
   $params{xml}->startTag("ram:ActualDeliverySupplyChainEvent");
 
@@ -680,6 +734,16 @@ sub _applicable_header_trade_delivery {
 
   $params{xml}->endTag;
   #       </ram:ActualDeliverySupplyChainEvent>
+
+  if ($self->donumber) {
+    #       <ram:DespatchAdviceReferencedDocument>
+    $params{xml}->startTag("ram:DespatchAdviceReferencedDocument");
+    $params{xml}->dataElement("ram:IssuerAssignedID", _u8($self->donumber));
+
+    $params{xml}->endTag;
+    #       </ram:DespatchAdviceReferencedDocument>
+  }
+
   $params{xml}->endTag;
   #     </ram:ApplicableHeaderTradeDelivery>
 }
@@ -715,88 +779,6 @@ sub _supply_chain_trade_transaction {
   #   </rsm:SupplyChainTradeTransaction>
 }
 
-sub _validate_data {
-  my ($self) = @_;
-
-  my %result;
-  my $prefix = $::locale->text('The ZUGFeRD invoice data cannot be generated because the data validation failed.') . ' ';
-
-  if (!$::instance_conf->get_co_ustid) {
-    SL::X::ZUGFeRDValidation->throw(message => $prefix . $::locale->text('The VAT registration number is missing in the client configuration.'));
-  }
-
-  if (!SL::VATIDNr->validate($::instance_conf->get_co_ustid)) {
-    SL::X::ZUGFeRDValidation->throw(message => $prefix . $::locale->text("The VAT ID number in the client configuration is invalid."));
-  }
-
-  if (!$::instance_conf->get_company || any { my $get = "get_address_$_"; !$::instance_conf->$get } qw(street1 zipcode city)) {
-    SL::X::ZUGFeRDValidation->throw(message => $prefix . $::locale->text('The company\'s address information is incomplete in the client configuration.'));
-  }
-
-  if ($::instance_conf->get_address_country && !SL::Helper::ISO3166::map_name_to_alpha_2_code($::instance_conf->get_address_country)) {
-    SL::X::ZUGFeRDValidation->throw(message => $prefix . $::locale->text('The country from the company\'s address in the client configuration cannot be mapped to an ISO 3166-1 alpha 2 code.'));
-  }
-
-  if ($self->customer->country && !SL::Helper::ISO3166::map_name_to_alpha_2_code($self->customer->country)) {
-    SL::X::ZUGFeRDValidation->throw(message => $prefix . $::locale->text('The country from the customer\'s address cannot be mapped to an ISO 3166-1 alpha 2 code.'));
-  }
-
-  if (!SL::Helper::ISO4217::map_currency_name_to_code($self->currency->name)) {
-    SL::X::ZUGFeRDValidation->throw(message => $prefix . $::locale->text('The currency "#1" cannot be mapped to an ISO 4217 currency code.', $self->currency->name));
-  }
-
-  my $failed_unit = first { !SL::Helper::UNECERecommendation20::map_name_to_code($_) } map { $_->unit } @{ $self->items };
-  if ($failed_unit) {
-    SL::X::ZUGFeRDValidation->throw(message => $prefix . $::locale->text('One of the units used (#1) cannot be mapped to a known unit code from the UN/ECE Recommendation 20 list.', $failed_unit));
-  }
-
-  if ($self->direct_debit) {
-    if (!$self->customer->iban) {
-      SL::X::ZUGFeRDValidation->throw(message => $prefix . $::locale->text('The customer\'s bank account number (IBAN) is missing.'));
-    }
-
-  } else {
-    require SL::DB::Manager::BankAccount;
-    my $bank_accounts     = SL::DB::Manager::BankAccount->get_all;
-    $result{bank_account} = scalar(@{ $bank_accounts }) == 1 ? $bank_accounts->[0] : first { $_->use_for_zugferd } @{ $bank_accounts };
-
-    if (!$result{bank_account}) {
-      SL::X::ZUGFeRDValidation->throw(message => $prefix . $::locale->text('No bank account flagged for Factur-X/ZUGFeRD usage was found.'));
-    }
-  }
-
-  if ($self->amount - $self->paid > 0) {
-    if (!$self->duedate && !$self->payment_terms) {
-      SL::X::ZUGFeRDValidation->throw(message => $prefix . $::locale->text('In case the amount due is positive, either due date or payment term must be set.'));
-    }
-  }
-
-  if (_is_profile($self, PROFILE_XRECHNUNG())) {
-    if (!$self->customer->c_vendor_routing_id) {
-      SL::X::ZUGFeRDValidation->throw(message => $prefix . $::locale->text('The value \'our routing id at customer\' must be set in the customer\'s master data for profile #1.', 'XRechnung 2.0'));
-    }
-  }
-
-  #
-  # GS1 GTIN/EAN/GLN/ILN and ISBN-13 all use the same check digits
-  #
-  if ($self->customer->gln && !Algorithm::CheckDigits::CheckDigits('ean')->is_valid($self->customer->gln)) {
-      SL::X::ZUGFeRDValidation->throw(message => $prefix . $::locale->text('Customer GLN check digit mismatch. #1 does not seem to be a valid GLN', $self->customer->gln));
-  }
-
-  if ($::instance_conf->get_gln && !Algorithm::CheckDigits::CheckDigits('ean')->is_valid($::instance_conf->get_gln)) {
-      SL::X::ZUGFeRDValidation->throw(message => $prefix . $::locale->text('Client config GLN check digit mismatch. #1 does not seem to be a valid GLN.', $::instance_conf->get_gln));
-  }
-
-  for my $item (@{ $self->items_sorted }) {
-    if ($item->part->ean && !Algorithm::CheckDigits::CheckDigits('ean')->is_valid($item->part->ean)) {
-        SL::X::ZUGFeRDValidation->throw(message => $prefix . $::locale->text('EAN check digit mismatch for part #1. #2 does not seem to be a valid EAN.', $item->part->displayable_name, $item->part->ean));
-    }
-  }
-
-  return %result;
-}
-
 sub create_zugferd_data {
   my ($self)        = @_;
   $self->{_zugferd} = { SL::ZUGFeRD->convert_customer_setting($self->customer->create_zugferd_invoices_for_this_customer) };
@@ -807,7 +789,7 @@ sub create_zugferd_data {
 
   my $output        = '';
 
-  my %params        = _validate_data($self);
+  my %params        = $self->validate_zugferd_data(prefix => $::locale->text('The ZUGFeRD invoice data cannot be generated because the data validation failed.') . ' ');
   $params{ptc_data} = { $self->calculate_prices_and_taxes };
   $params{xml}      = XML::Writer->new(
     OUTPUT          => \$output,

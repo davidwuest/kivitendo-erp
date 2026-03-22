@@ -191,9 +191,6 @@
   <div class="list col">
     <h4>[% 'Status' | $T8 %]</h4>
     <div>
-      <input name="l_paid" id="l_paid" type="checkbox" checked><label for="l_paid">[% 'Paid' | $T8 %]</label>
-    </div>
-    <div>
       <input name="l_dunning_description" id="l_dunning_description" type="checkbox"><label for="l_dunning_description">[% 'Dunning level' | $T8 %]</label>
     </div>
   </div>
@@ -210,6 +207,9 @@
     </div>
     <div>
       <input name="l_globalprojectnumber" id="l_globalprojectnumber" type="checkbox"><label for="l_globalprojectnumber">[% 'Document Project Number' | $T8 %]</label>
+    </div>
+    <div>
+      <input name="l_globalprojectdescription" id="l_globalprojectdescription" type="checkbox"><label for="l_globalprojectdescription">[% 'Document Project Description' | $T8 %]</label>
     </div>
     <div>
       <input name="l_cusordnumber" id="l_cusordnumber" type="checkbox"><label for="l_cusordnumber">[% 'Customer Order Number' | $T8 %]</label>
@@ -243,9 +243,6 @@
     </div>
     <div>
       <input name="l_customernumber" id="l_customernumber" type="checkbox"><label for="l_customernumber">[% 'Customer Number' | $T8 %]</label>
-    </div>
-    <div>
-      <input name="l_department" id="l_department" type="checkbox"><label for="l_department">[% 'Department' | $T8 %]</label>
     </div>
     <div>
       <input name="l_country" id="l_country" type="checkbox"><label for="l_country">[% 'Country' | $T8 %]</label>
@@ -290,6 +287,9 @@
       <input name="l_subtotal" id="l_subtotal" type="checkbox"><label for="l_subtotal">[% 'Subtotal' | $T8 %]</label>
     </div>
     <div>
+      <input name="l_paid" id="l_paid" type="checkbox" checked><label for="l_paid">[% 'Paid' | $T8 %]</label>
+    </div>
+    <div>
       <input name="l_due" id="l_due" type="checkbox"><label for="l_due">[% 'Amount Due' | $T8 %]</label>
     </div>
     <div>
@@ -307,6 +307,9 @@
   </div>
   <div class="list col">
     <h4>[% 'Miscellaneous' | $T8 %]</h4>
+    <div>
+      <input name="l_department" id="l_department" type="checkbox"><label for="l_department">[% 'Department' | $T8 %]</label>
+    </div>
     <div>
       <input name="l_notes" id="l_notes" type="checkbox"><label for="l_notes">[% 'Notes' | $T8 %]</label>
     </div>
@@ -330,11 +333,11 @@
     </div>
     <div>
     [% IF INSTANCE_CONF.get_doc_storage -%]
-      <input name="l_attachments" id="l_attachments" class=checkbox type=checkbox value=Y>[% 'Attachments' | $T8 %]
+      <input name="l_attachments" id="l_attachments" type="checkbox" value="Y"><label for="l_attachments">[% 'Attachments' | $T8 %]</label>
     [% END-%]
     </div>
     <div>
-      <input name="l_items" id="l_items" class=checkbox type=checkbox value=Y> [% 'Positions' | $T8 %]
+      <input name="l_items" id="l_items" type="checkbox" value="Y"><label for="l_items">[% 'Positions' | $T8 %]</label>
     </div>
   </div>
   <div class="list col">

@@ -56,6 +56,7 @@ use SL::DB::Tax;
 use SL::DB::EmailJournal;
 use SL::DB::ValidityToken;
 use SL::Presenter::ItemsList;
+use SL::SearchProfileManager;
 use SL::Webdav;
 use SL::ZUGFeRD;
 use SL::Locale::String qw(t8);
@@ -756,8 +757,8 @@ sub update {
       my $tmpnetamount;
       ($tmpnetamount,$form->{"tax_$i"}) = $form->calculate_tax($form->{"amount_$i"},$rate,$form->{taxincluded},2);
 
-      my $tax = SL::DB::Manager::Tax->find_by(id => $taxkey);
-      $totaltax += ($tax->reverse_charge_chart_id) ? 0 : $form->{"tax_$i"};
+      my $tax = $taxkey ? SL::DB::Manager::Tax->find_by(id => $taxkey) : undef;
+      $totaltax += ($tax && $tax->reverse_charge_chart_id) ? 0 : $form->{"tax_$i"};
 
       map { $a[$j]->{$_} = $form->{"${_}_$i"} } @flds;
       $count++;
@@ -1143,9 +1144,11 @@ sub search {
   # constants and subs for template
   $form->{vc_keys}   = sub { "$_[0]->{name}--$_[0]->{id}" };
 
-  $::request->layout->add_javascripts("autocomplete_project.js");
+  $::request->layout->add_javascripts("autocomplete_project.js", "kivi.SearchProfile.js");
 
   setup_ap_search_action_bar();
+
+  load_search_profile();
 
   $form->header;
   print $form->parse_html_template('ap/search', { %myconfig });
@@ -1191,7 +1194,7 @@ sub ap_transactions {
 
   my @columns =
     qw(transdate id type invnumber ordnumber name netamount tax amount paid datepaid
-       due duedate transaction_description notes intnotes employee globalprojectnumber department
+       due duedate transaction_description notes intnotes employee globalprojectdescription globalprojectnumber department
        vendornumber country ustid taxzone payment_terms charts debit_chart direct_debit
        insertdate items);
 
@@ -1222,6 +1225,7 @@ sub ap_transactions {
     'notes'                   => { 'text' => $locale->text('Notes'), },
     'intnotes'                => { 'text' => $locale->text('Internal Notes'), },
     'employee'                => { 'text' => $locale->text('Employee'), },
+    'globalprojectdescription' => { 'text' => $locale->text('Document Project Description'), },
     'globalprojectnumber'     => { 'text' => $locale->text('Document Project Number'), },
     'department'              => { 'text' => $locale->text('Department'), },
     'vendornumber'            => { 'text' => $locale->text('Vendor Number'), },
@@ -1236,7 +1240,7 @@ sub ap_transactions {
     'items'                   => { 'text' => $locale->text('Positions'), },
   );
 
-foreach my $name (qw(id transdate duedate invnumber ordnumber name datepaid employee shipvia transaction_description direct_debit department taxzone insertdate intnotes)) {
+  foreach my $name (qw(id transdate duedate invnumber ordnumber name netamount amount datepaid employee shipvia transaction_description direct_debit department taxzone insertdate intnotes globalprojectdescription globalprojectnumber)) {
     my $sortdir                 = $form->{sort} eq $name ? 1 - $form->{sortdir} : $form->{sortdir};
     $column_defs{$name}->{link} = $href . "&sort=$name&sortdir=$sortdir";
   }
@@ -1725,4 +1729,74 @@ sub setup_ap_display_form_action_bar {
     );
   }
   $::request->layout->add_javascripts('kivi.Validator.js');
+}
+
+sub setup_search_profile_manager {
+  return SL::SearchProfileManager->new(
+    employee_id => SL::DB::Manager::Employee->current->id,
+    module      => 'ap/search',
+    config      => [
+      { type   => 'boolean',
+        fields => [ qw(open closed l_transdate l_duedate l_datepaid l_insertdate l_id l_invnumber l_ordnumber l_globalprojectnumber l_globalprojectdescription l_transaction_description
+                       l_netamount l_tax l_subtotal l_amount l_paid l_due l_employee l_notes l_intnotes l_department l_charts l_taxzone l_payment_terms l_direct_debit l_debit_chart l_items
+                       l_name l_vendornumber l_country l_ustid) ] },
+      { type   => 'date',
+        fields => [ qw(datepaidfrom datepaidto duedatefrom duedateto insertdatefrom insertdateto transdatefrom transdateto) ] },
+      { type   => 'integer',
+        fields => [ qw(department_id project_id taxzone_id payment_id) ] },
+      { type   => 'text',
+        fields => [ qw(vendor cp_name parts_description notes intnotes transaction_description fulltext invnumber ordnumber parts_partnumber parts_serialnumber) ] },
+    ],
+    defaults => {
+      map({ ($_ => 1) } qw(open l_transdate l_invnumber l_amount l_paid l_name)),
+      l_transaction_description => $::instance_conf->get_require_transaction_description_ps,
+    },
+  );
+}
+
+sub load_search_profile {
+  my $manager = setup_search_profile_manager();
+
+  my $id      = ($::form->{SEARCH_PROFILE_OPTIONS} // {})->{search_profile_id};
+  my $profile = $id ? SL::DB::Manager::SearchProfile->find_by(id => $id) : $manager->get_default_profile;
+
+  $manager->load_profile(
+    profile => $profile,
+    form    => $::form,
+  );
+
+  $::form->{SEARCH_PROFILE_OPTIONS} = {
+    actions => {
+      delete => 'delete_search_profile_and_search',
+      load   => 'search', # standard `search` sub will always load selected profile
+      save   => 'save_search_profile_and_search',
+    },
+    active_search_profile => $profile,
+    search_profile_id     => $profile ? $profile->id : undef,
+    name                  => $profile ? $profile->name : undef,
+    all_search_profiles   => $manager->get_all_profiles,
+  };
+}
+
+sub save_search_profile_and_search {
+  my $manager = setup_search_profile_manager();
+  my $profile = $manager->save_profile(
+    form            => $::form,
+    name            => $::form->{SEARCH_PROFILE_OPTIONS}->{name},
+    default_profile => !!$::form->{SEARCH_PROFILE_OPTIONS}->{default_profile},
+  );
+
+  $::form->{callback} = "$::form->{script}?action=search&SEARCH_PROFILE_OPTIONS.search_profile_id=" . $profile->id;
+  $::form->redirect;
+}
+
+sub delete_search_profile_and_search {
+  my $profile_id = ($::form->{SEARCH_PROFILE_OPTIONS} // {})->{search_profile_id};
+
+  if ($profile_id) {
+    setup_search_profile_manager()->delete_profile(profile_id => $profile_id);
+  }
+
+  $::form->{callback} = "$::form->{script}?action=search";
+  $::form->redirect;
 }

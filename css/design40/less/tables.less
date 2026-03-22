@@ -291,7 +291,7 @@ table {
   //  otherwise th.caption will be overridden if placed above
   caption,
   th.caption {
-    .mx-h3-caption ; //   mixin
+    .mx-h3-caption() ; //   mixin
     white-space:       nowrap ;
     //  addition with smaller font-size
     small { font-size : @font-size-small ; }
@@ -304,13 +304,19 @@ table {
   //--------------------------------------
   thead {
     th {
-      .mx-thead-th ; //  mixin
+      .mx-thead-th() ; //  mixin
 
       a {
         img {
           vertical-align: middle ;
           padding: 0 ;
           margin: 0 ;
+        }
+      }
+
+      img {
+        &.context-help {
+          filter: invert(100%);
         }
       }
     }
@@ -589,7 +595,7 @@ table {
 //      font-weight: normal ;
 //      font-size: @h3-size ;
 //      color: @base-heading-color ;
-      .mx-h3-caption ;
+      .mx-h3-caption() ;
       border: none ;
     }
 
@@ -687,7 +693,7 @@ table {
       tr {
         height:  2.2em ;
         th {
-          .mx-thead-th ; // mixin
+          .mx-thead-th() ; // mixin
           &.nowrap { white-space: nowrap !important ; }
 
           & > a {
@@ -804,7 +810,7 @@ table {
     }
     thead {
       th {
-        .mx-thead-th ; // mixin
+        .mx-thead-th() ; // mixin
       }
     }
 

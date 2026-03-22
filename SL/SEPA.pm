@@ -10,6 +10,7 @@ use SL::DBUtils;
 use SL::DB::Invoice;
 use SL::DB::PurchaseInvoice;
 use SL::DB;
+use SL::Helper::ISO4217;
 use SL::Locale::String qw(t8);
 use DateTime;
 use Carp;
@@ -37,6 +38,7 @@ sub retrieve_open_invoices {
   my $query =
     qq|
        SELECT ${arap}.id, ${arap}.invnumber, ${arap}.transdate, ${arap}.${vc}_id as vc_id, ${arap}.amount AS invoice_amount, ${arap}.invoice,
+         ${arap}.currency_id,
          (${arap}.transdate + pt.terms_skonto) as skonto_date, (pt.percent_skonto * 100) as percent_skonto,
          (${arap}.amount - (${arap}.amount * pt.percent_skonto)) as amount_less_skonto,
          (${arap}.amount * pt.percent_skonto) as skonto_amount,
@@ -80,6 +82,10 @@ sub retrieve_open_invoices {
     push @options, { payment_type => 'without_skonto',  display => t8('without skonto') };
     push @options, { payment_type => 'with_skonto_pt',  display => t8('with skonto acc. to pt'), selected => 1 } if $result->{within_skonto_period};
     $result->{payment_select_options}  = \@options;
+
+    # add the original record's currency
+    $result->{currency}         = SL::DB::Currency->load_cached($result->{currency_id})->name;
+    $result->{currency_not_eur} = 'EUR' ne SL::Helper::ISO4217::map_currency_name_to_code($result->{currency});
   }
 
   $main::lxdebug->leave_sub();
@@ -238,7 +244,7 @@ sub retrieve_export {
     my $mandator_id = $params{vc} eq 'customer' ? ', mandator_id, mandate_date_of_signature' : '';
 
     if ($params{details}) {
-      $columns = qq|, arap.invnumber, arap.invoice, arap.transdate AS reference_date, vc.name AS vc_name, vc.${vc}number AS vc_number, c.accno AS chart_accno, c.description AS chart_description ${mandator_id}|;
+      $columns = qq|, arap.invnumber, arap.invoice, arap.transdate AS reference_date, COALESCE (NULLIF(vc.depositor,''), vc.name) AS vc_name, vc.${vc}number AS vc_number, c.accno AS chart_accno, c.description AS chart_description ${mandator_id}|;
       $joins   = qq|LEFT JOIN ${arap} arap ON (sei.${arap}_id = arap.id)
                     LEFT JOIN ${vc} vc     ON (arap.${vc}_id  = vc.id)
                     LEFT JOIN chart c      ON (sei.chart_id   = c.id)|;
