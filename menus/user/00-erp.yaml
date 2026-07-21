@@ -48,6 +48,14 @@
     action: CustomerVendor/add
     db: vendor
 - parent: master_data
+  id: master_data_add_contact
+  name: Add Contact
+  icon: contact_add
+  order: 250
+  access: customer_vendor_all_edit
+  params:
+    action: Contact/edit
+- parent: master_data
   id: master_data_add_part
   name: Add Part
   icon: part_add
@@ -556,6 +564,20 @@
   params:
     action: Inventory/stocktaking
 - parent: warehouse
+  id: warehouse_stock_counting
+  name: Stock Counting
+  order: 470
+  access: warehouse_management
+  params:
+    action: StockCounting/select_counting
+- parent: warehouse
+  id: warehouse_stock_counting_reconciliation
+  name: Stock Counting Reconciliations
+  order: 480
+  access: warehouse_management
+  params:
+    action: StockCountingReconciliation/list
+- parent: warehouse
   id: warehouse_reports
   name: Reports
   order: 500
@@ -590,6 +612,14 @@
   access: warehouse_contents | warehouse_management
   params:
     action: Inventory/stocktaking_journal
+- parent: warehouse_reports
+  id: warehouse_stock_counting_items
+  name: Stock Counting Items
+  order: 500
+  access: warehouse_management
+  params:
+    action: StockCounting/list
+    group_counting_items: 1
 - id: general_ledger
   name: General Ledger
   icon: gl
@@ -1312,6 +1342,14 @@
     action: SimpleSystemSetting/list
     type: language
 - parent: system_languages_and_translations
+  id: system_languages_and_translations_countries
+  name: Country Names
+  order: 200
+  access: admin
+  params:
+    action: SimpleSystemSetting/list
+    type: country
+- parent: system_languages_and_translations
   id: system_languages_and_translations_greetings
   name: Greetings
   order: 300
@@ -1364,6 +1402,13 @@
   module: am.pl
   params:
     action: list_warehouses
+- parent: system
+  id: system_stock_countings
+  name: Stock Countings
+  order: 2320
+  params:
+    action: SimpleSystemSetting/list
+    type: stock_counting
 - parent: system
   id: system_shops
   name: Web shops
@@ -1452,29 +1497,6 @@
   params:
     action: CsvImport/new
     profile.type: ap_transactions
-- parent: system
-  id: system_templates
-  name: Templates
-  order: 2500
-  access: admin
-- parent: system_templates
-  id: system_templates_html_templates
-  name: HTML Templates
-  order: 100
-  module: amtemplates.pl
-  params:
-    action: display_template_form
-    type: templates
-    format: html
-- parent: system_templates
-  id: system_templates_latex_templates
-  name: LaTeX Templates
-  order: 200
-  module: amtemplates.pl
-  params:
-    action: display_template_form
-    format: tex
-    type: templates
 - parent: system
   id: system_general_ledger_corrections
   name: General Ledger Corrections
@@ -1624,6 +1646,13 @@
   params:
     action: Chart/test_page
 - parent: develop
+  id: chart_test
+  name: Contact Test
+  access: developer
+  order: 250
+  params:
+    action: Contact/test_page
+- parent: develop
   id: customervendor_test
   name: Customer-Vendor Test
   access: developer
@@ -1637,6 +1666,13 @@
   order: 400
   params:
     action: Project/test_page
+- parent: develop
+  id: warehouse_test
+  name: Warehouse Test
+  access: developer
+  order: 430
+  params:
+    action: Warehouse/test_page
 - parent: develop
   id: ckeditor_test
   name: CKEditor5 Test

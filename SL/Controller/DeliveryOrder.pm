@@ -5,7 +5,7 @@ use parent qw(SL::Controller::Base);
 
 use SL::Helper::Flash qw(flash_later);
 use SL::Helper::Number qw(_format_number _parse_number);
-use SL::Presenter::Tag qw(select_tag hidden_tag div_tag);
+use SL::Presenter::Tag qw(select_tag div_tag);
 use SL::Presenter::DeliveryOrder qw(delivery_order_status_line);
 use SL::Locale::String qw(t8);
 use SL::SessionFile::Random;
@@ -109,7 +109,7 @@ sub action_add {
 
   $self->render(
     'delivery_order/form',
-    title => $self->get_title_for('add'),
+    title => $self->type_data->text('add'),
     %{$self->{template_args}}
   );
 }
@@ -182,7 +182,7 @@ sub action_edit {
   $self->pre_render();
   $self->render(
     'delivery_order/form',
-    title => $self->get_title_for('edit'),
+    title => $self->type_data->text('edit'),
     %{$self->{template_args}}
   );
 }
@@ -684,6 +684,7 @@ sub action_customer_vendor_changed {
   }
 
   $self->js->val( '#order_salesman_id',      $self->order->salesman_id)        if $self->order->is_sales;
+  $self->js->val( '#order_buyer_id',         $self->order->buyer_id)           if !$self->order->is_sales;
 
   $self->js
     ->replaceWith('#order_cp_id',            $self->build_contact_select)
@@ -991,7 +992,7 @@ sub action_return_from_create_part {
     $self->pre_render();
     $self->render(
       'delivery_order/form',
-      title => $self->get_title_for('edit'),
+      title => $self->type_data->text('edit'),
       %{$self->{template_args}}
     );
   } else {
@@ -1628,6 +1629,17 @@ sub check_auth_for_edit {
   $::auth->assert($self->type_data->rights('edit') || 'DOES_NOT_EXIST');
 }
 
+sub cv_assigned_contacts {
+  my ($self) = @_;
+
+  my $contacts = $self->order->customervendor ? $self->order->customervendor->contacts() : [];
+  if ($self->order->contact && none { $_->cp_id == $self->order->contact->cp_id } @$contacts) {
+    push @$contacts, $self->order->contact;
+  }
+
+  $contacts;
+}
+
 # build the selection box for contacts
 #
 # Needed, if customer/vendor changed.
@@ -1639,7 +1651,7 @@ sub build_contact_select {
     title_key  => 'full_name_dep',
     default    => $self->order->cp_id,
     with_empty => 1,
-    style      => 'width: 300px',
+    class      => 'wi-lightwide',
   );
 }
 
@@ -1659,7 +1671,7 @@ sub build_shipto_select {
              title_key  => 'displayable_id',
              default    => $self->order->shipto_id,
              with_empty => 0,
-             style      => 'width: 300px',
+             class      => 'wi-lightwide',
   );
 }
 
@@ -1849,7 +1861,8 @@ sub new_item {
   $new_attr{price_factor_id}        = $item->part->price_factor_id if ! $item->price_factor_id;
   $new_attr{sellprice}              = $price_src->price;
   $new_attr{discount}               = $discount_src->discount;
-  $new_attr{active_price_source}    = $price_src;
+  $new_attr{active_price_source}    = $::instance_conf->get_prices_always_free ? SL::PriceSource->new()->price_from_source("")
+                                                                               : $price_src;
   $new_attr{active_discount_source} = $discount_src;
   $new_attr{longdescription}        = $texts->{longdescription}    if ! defined $attr->{longdescription};
   $new_attr{project_id}             = $record->globalproject_id;
@@ -2400,13 +2413,6 @@ sub get_files_for_email_dialog {
   }
 
   return %files;
-}
-
-sub get_title_for {
-  my ($self, $action) = @_;
-
-  return '' if none { lc($action)} qw(add edit);
-  return $self->type_data->text($action);
 }
 
 sub get_item_cvpartnumber {

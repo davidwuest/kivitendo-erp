@@ -15,10 +15,11 @@ __PACKAGE__->meta->columns(
   bcc              => { type => 'text' },
   bic              => { type => 'text' },
   business_id      => { type => 'integer' },
+  buyer_id         => { type => 'integer' },
   cc               => { type => 'text' },
   city             => { type => 'text' },
   contact          => { type => 'text' },
-  country          => { type => 'text' },
+  country_id       => { type => 'integer', not_null => 1 },
   creditlimit      => { type => 'numeric', precision => 15, scale => 5 },
   currency_id      => { type => 'integer', not_null => 1 },
   delivery_term_id => { type => 'integer' },
@@ -67,6 +68,16 @@ __PACKAGE__->meta->foreign_keys(
     key_columns => { business_id => 'id' },
   },
 
+  buyer => {
+    class       => 'SL::DB::Employee',
+    key_columns => { buyer_id => 'id' },
+  },
+
+  country => {
+    class       => 'SL::DB::Country',
+    key_columns => { country_id => 'id' },
+  },
+
   currency => {
     class       => 'SL::DB::Currency',
     key_columns => { currency_id => 'id' },
@@ -94,4 +105,4 @@ __PACKAGE__->meta->foreign_keys(
 );
 
 1;
-;
+

@@ -8,6 +8,8 @@ use parent qw(SL::Controller::Base);
 use SL::Helper::Flash;
 use SL::Locale::String;
 use SL::DB::Default;
+use SL::DB::PartsGroup;
+use SL::DB::Warehouse;
 use SL::System::Process;
 use SL::Presenter;
 
@@ -41,6 +43,7 @@ my %supported_types = (
       {                                                        title => t8('Use with bank import'), formatter => sub { $_[0]->use_with_bank_import ? t8('yes') : t8('no') } },
       {                                                        title => t8('Use for Factur-X/ZUGFeRD'), formatter => sub { $_[0]->use_for_zugferd ? t8('yes') : t8('no') } },
       {                                                        title => t8('Use for Swiss QR-Bill'), formatter => sub { $_[0]->use_for_qrbill ? t8('yes') : t8('no') } },
+      {                                                        title => t8('Exempt from DATEV export'), formatter => sub { $_[0]->exempt_from_datev_export ? t8('yes') : t8('no') } },
       { method => 'reconciliation_starting_date_as_date',      title => t8('Date'),    align => 'right' },
       { method => 'reconciliation_starting_balance_as_number', title => t8('Balance'), align => 'right' },
     ],
@@ -79,6 +82,22 @@ my %supported_types = (
       add  => t8('Add title'),
       edit => t8('Edit title'),
     },
+  },
+
+  country => {
+    # Make locales.pl happy: $self->render("simple_system_setting/_country_form")
+    class  => 'Country',
+    auth   => 'config',
+    titles => {
+      list => t8('Country Names'),
+      edit => t8('Country Names'),
+    },
+    list_attributes => [
+      { method => 'iso2',  title => 'ISO 3166-1', },
+      {                    title => t8('Description'), formatter => sub { $_[0]->description_localized($::myconfig{countrycode}) } },
+    ],
+    top_info_text => t8('The ISO 3166-1 alpha-2 codes are required for Factur-X/ZUGFeRD invoices. The corresponding names are printed on records.'),
+    no_create => 1,
   },
 
   department => {
@@ -319,6 +338,23 @@ my %supported_types = (
     ],
   },
 
+  stock_counting => {
+    # Make locales.pl happy: $self->render("simple_system_setting/_stock_counting_form")
+    class  => 'StockCounting',
+    auth   => 'config',
+    titles => {
+      list => t8('Stock Countings'),
+      add  => t8('Add stock counting'),
+      edit => t8('Edit stock counting'),
+    },
+    list_attributes => [
+      { title => t8('Name'),        method => 'name',       },
+      { title => t8('Description'), method => 'description' },
+      { title => t8('Reconciliated'), formatter => sub { $_[0]->reconciliated ? t8('Yes') : t8('No') } },
+      { title => t8('Employee'),    formatter => sub { $_[0]->employee->safe_name } },
+    ],
+  },
+
 );
 
 my @default_list_attributes = (
@@ -382,7 +418,7 @@ sub action_reorder {
   my ($self) = @_;
 
   $self->class->reorder_list(@{ $::form->{object_id} || [] });
-  $self->render(\'', { type => 'json' });
+  $self->render(\'', { type => 'json' }); # make emacs happy ')
 }
 
 #
@@ -495,6 +531,15 @@ sub setup_language {
   $self->{dateformats}   = [ qw(mm/dd/yy dd/mm/yy dd.mm.yy yyyy-mm-dd) ];
 }
 
+sub setup_stock_counting {
+  my ($self) = @_;
+
+  $self->{current_employee_id} = SL::DB::Manager::Employee->current->id;
+
+  my %pg_additional_condition = ($::form->{id} && $self->object->partsgroup_id) ? (id => $self->object->partsgroup_id) : ();
+  $self->{all_partsgroups} = SL::DB::Manager::PartsGroup->get_all_sorted(where => [or => [obsolete => undef, obsolete => 0, %pg_additional_condition]]);
+}
+
 #
 # action bar
 #
@@ -502,11 +547,14 @@ sub setup_language {
 sub setup_list_action_bar {
   my ($self, %params) = @_;
 
+  my $can_be_created = !$self->config->{no_create};
+
   for my $bar ($::request->layout->get('actionbar')) {
     $bar->add(
       link => [
         t8('Add'),
-        link => $self->url_for(action => 'new', type => $self->type),
+        link    => $self->url_for(action => 'new', type => $self->type),
+        only_if => $can_be_created,
       ],
     );
   }

@@ -11,7 +11,7 @@ __PACKAGE__->meta->table('defaults');
 __PACKAGE__->meta->columns(
   accounting_method                         => { type => 'text' },
   address_city                              => { type => 'text' },
-  address_country                           => { type => 'text' },
+  address_country_id                        => { type => 'integer', not_null => 1 },
   address_street1                           => { type => 'text' },
   address_street2                           => { type => 'text' },
   address_zipcode                           => { type => 'text' },
@@ -47,9 +47,12 @@ __PACKAGE__->meta->columns(
   cnnumber                                  => { type => 'text' },
   co_ustid                                  => { type => 'text' },
   coa                                       => { type => 'text' },
+  commercial_register_entry                 => { type => 'text' },
+  commercial_register_place                 => { type => 'text' },
   company                                   => { type => 'text' },
   contact_departments_use_textfield         => { type => 'boolean' },
   contact_titles_use_textfield              => { type => 'boolean' },
+  contactnumber                             => { type => 'text' },
   create_part_if_not_found                  => { type => 'boolean', default => 'false' },
   create_qrbill_invoices                    => { type => 'integer' },
   create_zugferd_invoices                   => { type => 'integer' },
@@ -140,6 +143,7 @@ __PACKAGE__->meta->columns(
   letternumber                              => { type => 'integer' },
   lock_oe_subversions                       => { type => 'boolean', default => 'false', not_null => 1 },
   loss_carried_forward_chart_id             => { type => 'integer' },
+  managing_directors                        => { type => 'text' },
   max_future_booking_interval               => { type => 'integer', default => 360 },
   mtime                                     => { type => 'timestamp' },
   no_bank_proposals                         => { type => 'boolean', default => 'false' },
@@ -151,16 +155,19 @@ __PACKAGE__->meta->columns(
   order_warn_no_cusordnumber                => { type => 'boolean', default => 'false' },
   order_warn_no_deliverydate                => { type => 'boolean', default => 'true' },
   p_reclamation_record_number               => { type => 'text', default => '0', not_null => 1 },
+  parts_check_ean                           => { type => 'boolean', default => 'true', not_null => 1 },
   parts_image_css                           => { type => 'text', default => 'border:0;float:left;max-width:250px;margin-top:20px:margin-right:10px;margin-left:10px;' },
   parts_listing_image                       => { type => 'boolean', default => 'true' },
   parts_show_image                          => { type => 'boolean', default => 'true' },
   partsgroup_required                       => { type => 'boolean', default => 'false', not_null => 1 },
+  payment_approval                          => { type => 'boolean', default => 'false' },
   payments_changeable                       => { type => 'integer', default => '0', not_null => 1 },
   pdonumber                                 => { type => 'text' },
   pocnumber                                 => { type => 'text' },
   ponumber                                  => { type => 'text' },
   pqinumber                                 => { type => 'text' },
   precision                                 => { type => 'numeric', default => '0.01', not_null => 1, precision => 15, scale => 5 },
+  prices_always_free                        => { type => 'boolean', default => 'false' },
   print_interpolate_variables_in_positions  => { type => 'boolean', default => 'true', not_null => 1 },
   produce_assembly_allow_empty_items        => { type => 'boolean', default => 'false' },
   produce_assembly_same_warehouse           => { type => 'boolean', default => 'true' },
@@ -181,6 +188,7 @@ __PACKAGE__->meta->columns(
   reclamation_warn_no_reqdate               => { type => 'boolean', default => 'true', not_null => 1 },
   record_links_from_order_with_myself       => { type => 'boolean', default => 'false' },
   record_links_from_order_with_quotations   => { type => 'boolean', default => 'false' },
+  registered_seat                           => { type => 'text' },
   reqdate_interval                          => { type => 'integer', default => '0' },
   reqdate_on                                => { type => 'boolean', default => 'true' },
   require_transaction_description_ps        => { type => 'boolean', default => 'false', not_null => 1 },
@@ -200,12 +208,15 @@ __PACKAGE__->meta->columns(
   sales_reclamation_show_delete             => { type => 'boolean', default => 'true', not_null => 1 },
   sales_serial_eq_charge                    => { type => 'boolean', default => 'false', not_null => 1 },
   sdonumber                                 => { type => 'text' },
+  sepa_amount_editable                      => { type => 'boolean', default => 'false', not_null => 1 },
+  sepa_combine_payments                     => { type => 'boolean', default => 'true' },
   sepa_creditor_id                          => { type => 'text' },
   sepa_export_xml                           => { type => 'boolean', default => 'true' },
   sepa_reference_add_vc_vc_id               => { type => 'boolean', default => 'false' },
   sepa_set_duedate_as_default_exec_date     => { type => 'boolean', default => 'false' },
   sepa_set_skonto_date_as_default_exec_date => { type => 'boolean', default => 'false' },
   sepa_set_skonto_date_buffer_in_days       => { type => 'integer', default => '0' },
+  sepa_subtract_credit_notes                => { type => 'boolean', default => 'true' },
   servicenumber                             => { type => 'text' },
   shipped_qty_require_stock_out             => { type => 'boolean', default => 'false', not_null => 1 },
   show_bestbefore                           => { type => 'boolean', default => 'false' },
@@ -260,6 +271,11 @@ __PACKAGE__->meta->primary_key_columns([ 'id' ]);
 __PACKAGE__->meta->allow_inline_column_values(1);
 
 __PACKAGE__->meta->foreign_keys(
+  address_country => {
+    class       => 'SL::DB::Country',
+    key_columns => { address_country_id => 'id' },
+  },
+
   ap_chart => {
     class       => 'SL::DB::Chart',
     key_columns => { ap_chart_id => 'id' },
@@ -337,4 +353,4 @@ __PACKAGE__->meta->foreign_keys(
 );
 
 1;
-;
+

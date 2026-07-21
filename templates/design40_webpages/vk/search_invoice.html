@@ -3,8 +3,6 @@
 [% USE P %]
 [% SET style="width: 250px" %]
 
-<h1>[% title %]</h1>
-
 <form method=post name="search_invoice" action=[% script %]>
 <div class="wrapper">
 
@@ -152,7 +150,7 @@
     </tr>
     <tr>
       <th>[% 'Country' | $T8 %]</th>
-      <td>[% P.input_tag("country", "", class='wi-wide') %]</td>
+      <td>[% P.country.picker('country_id', with_empty=1, class='wi-wide') %]</td>
     </tr>
   </tbody>
 </table>

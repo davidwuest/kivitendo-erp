@@ -1,5 +1,6 @@
 [% USE LxERP %]
 [% USE L %]
+[% USE P %]
 
 <tr>
   <th>[% LxERP.t8('Target table') %]:</th>
@@ -21,6 +22,10 @@
     [% L.select_tag('settings.update_policy', opts,
                     default = SELF.profile.get('update_policy'), class='wi-wide') %]
   </td>
+</tr>
+<tr>
+  <th>[% LxERP.t8('Default country') %]:</th>
+  <td>[% P.country.picker('settings.default_country_id', SELF.profile.get('default_country_id'), class => 'wi-wide') %]</td>
 </tr>
 <tr>
   <th>[% LxERP.t8('Default taxzone') %]:</th>

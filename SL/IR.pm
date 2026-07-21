@@ -49,9 +49,11 @@ use SL::HTML::Restrict;
 use SL::IO;
 use SL::Locale::String qw(t8);
 use SL::MoreCommon;
+use SL::DB::Country;
 use SL::DB::Default;
 use SL::DB::TaxZone;
 use SL::DB::MakeModel;
+use SL::DB::PartsPriceHistory;
 use SL::DB::ValidityToken;
 use SL::DB;
 use SL::Presenter::Part qw(type_abbreviation classification_abbreviation);
@@ -95,7 +97,7 @@ sub _post_invoice {
   my $ic_cvar_configs = CVar->get_configs(module => 'IC',
                                           dbh    => $dbh);
 
-  my ($query, $sth, @values, $project_id);
+  my ($query, $sth, @values, $project_id, $ph);
   my ($allocated, $taxrate, $taxamount, $taxdiff, $item);
   my ($amount, $linetotal, $last_inventory_accno_tax_id_key, $last_expense_accno_tax_id_key);
   my ($netamount, $invoicediff, $expensediff) = (0, 0, 0);
@@ -266,6 +268,10 @@ sub _post_invoice {
       if ( abs($a->lastcost - $new_lastcost) >= 0.009 ) {
         $a->update_attributes(lastcost => $new_lastcost);
         $a->set_lastcost_assemblies_and_assortiments;
+
+        # new entry is created by trigger on the fly. CAVEAT: db behaviour might change
+        $ph = SL::DB::Manager::PartsPriceHistory->get_first(where => [ part_id => $a->id ], sort_by => 'id DESC');
+        $ph->update_attributes(vendor_id => $form->{vendor_id}, ap_id => $form->{id});
       }
 
       # check if we sold the item already and
@@ -429,6 +435,10 @@ sub _post_invoice {
       if ( abs($a->lastcost - $new_lastcost) >= 0.009 ) {
         $a->update_attributes(lastcost => $new_lastcost);
         $a->set_lastcost_assemblies_and_assortiments;
+
+        # new entry is created by trigger on the fly. CAVEAT: db behaviour might change
+        $ph = SL::DB::Manager::PartsPriceHistory->get_first(where => [ part_id => $a->id ], sort_by => 'id DESC');
+        $ph->update_attributes(vendor_id => $form->{vendor_id}, ap_id => $form->{id});
       }
     }
 
@@ -801,7 +811,8 @@ SQL
                 cp_id        = ?, employee_id = ?, department_id = ?, delivery_term_id = ?,
                 payment_id   = ?, transaction_description        = ?,
                 currency_id = (SELECT id FROM currencies WHERE name = ?),
-                globalproject_id = ?, direct_debit = ?
+                globalproject_id = ?, direct_debit = ?,
+                buyer_id = ?
               WHERE id = ?|;
   @values = (
                 $form->{invnumber},          $form->{ordnumber},           $form->{quonumber},      conv_date($form->{invdate}),
@@ -814,6 +825,7 @@ SQL
                 $form->{"currency"},
          conv_i($form->{globalproject_id}),
                 $form->{direct_debit} ? 't' : 'f',
+         conv_i($form->{buyer_id}),
          conv_i($form->{id})
   );
   do_query($form, $dbh, $query, @values);
@@ -1223,17 +1235,19 @@ sub get_vendor {
     $where .= 'AND v.vendornumber = ?';
     push @values, $vnr;
   }
+  my $country_description_key = SL::DB::Country->description_column_localized($::myconfig{countrycode});
   my $query =
     qq|SELECT
          v.id AS vendor_id, v.name AS vendor, v.discount as vendor_discount,
          v.creditlimit, v.notes AS intnotes,
          v.email, v.cc, v.bcc, v.language_id, v.payment_id, v.delivery_term_id,
-         v.street, v.zipcode, v.city, v.country, v.taxzone_id, cu.name AS curr, v.direct_debit,
+         v.street, v.zipcode, v.city, countries.$country_description_key AS country, v.taxzone_id, cu.name AS curr, v.direct_debit,
          $duedate + COALESCE(pt.terms_netto, 0) AS duedate,
          b.discount AS tradediscount, b.description AS business
        FROM vendor v
        LEFT JOIN business b       ON (b.id = v.business_id)
        LEFT JOIN payment_terms pt ON (v.payment_id = pt.id)
+       LEFT JOIN countries ON (v.country_id = countries.id)
        LEFT JOIN currencies cu    ON (v.currency_id = cu.id)
        WHERE 1=1 $where|;
   my $ref = selectfirst_hashref_query($form, $dbh, $query, @values);
@@ -1512,12 +1526,16 @@ sub vendor_details {
 
   # get rest for the vendor
   # fax and phone and email as vendor*
+  my $country_description_key = SL::DB::Country->description_column_localized($::myconfig{countrycode});
   my $query =
     qq|SELECT ct.*, cp.*, ct.notes as vendornotes, phone as vendorphone, fax as vendorfax, email as vendoremail,
-         cu.name AS currency
+         cu.name AS currency, ctc.$country_description_key AS country, cpc.$country_description_key AS cp_country
        FROM vendor ct
-       LEFT JOIN contacts cp ON (ct.id = cp.cp_cv_id)
-       LEFT JOIN currencies cu ON (ct.currency_id = cu.id)
+       LEFT JOIN currencies      cu  ON (ct.currency_id = cu.id)
+       LEFT JOIN vendor_contacts vc  ON (ct.id = vc.vendor_id)
+       LEFT JOIN contacts        cp  ON (vc.contact_id = cp.cp_id)
+       LEFT JOIN countries       ctc ON (ct.country_id = ctc.id)
+       LEFT JOIN countries       cpc ON (cp.cp_country_id = cpc.id)
        WHERE (ct.id = ?) $contact
        ORDER BY cp.cp_id
        LIMIT 1|;

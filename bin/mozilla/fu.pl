@@ -51,6 +51,7 @@ sub add {
 
   if (0 < scalar @{ $form->{LINKS} }) {
     $link_details = FU->link_details(%{ $form->{LINKS}->[0] });
+    $form->{LINKS}->[0]{$_} = $link_details->{$_} for keys %$link_details;
   }
 
   if ($link_details && $link_details->{title}) {
@@ -176,6 +177,8 @@ sub finish {
     }
 
     FU->finish('id' => $form->{id});
+
+    return edit() unless ($form->{POPUP_MODE});
 
   } else {
     foreach my $i (1..$form->{rowcount}) {
@@ -522,13 +525,19 @@ sub setup_fu_display_form_action_bar {
       action => [
         t8('Finish'),
         submit   => [ '#form', { action => "finish" } ],
-        disabled => !$::form->{id} ? t8('The object has not been saved yet.') : undef,
+        disabled => !$::form->{id} ? t8('The object has not been saved yet.') :
+                    $::form->{done_at} ? t8('Done') : undef,
       ],
       action => [
         t8('Delete'),
         submit   => [ '#form', { action => "delete" } ],
         disabled => !$::form->{id} ? t8('The object has not been saved yet.') : undef,
         confirm  => t8('Do you really want to delete this object?'),
+      ],
+      'separator',
+      action => [
+        t8('Back'),
+        link => $::form->{callback} || 'fu.pl?action=search',
       ],
     );
   }

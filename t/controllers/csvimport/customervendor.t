@@ -1,4 +1,4 @@
-use Test::More tests => 41;
+use Test::More tests => 42;
 
 use strict;
 
@@ -16,6 +16,8 @@ use_ok 'SL::Controller::CsvImport::CustomerVendor';
 
 Support::TestSetup::login();
 
+my @test_cvar_config_ids = ();
+
 #####
 sub do_import {
   my ($file, $settings) = @_;
@@ -25,8 +27,9 @@ sub do_import {
   );
   $controller->load_default_profile;
   $controller->profile->set(
-    charset  => 'utf-8',
-    sep_char => ';',
+    charset            => 'utf-8',
+    sep_char           => ';',
+    default_country_id => 1,
     %$settings
   );
 
@@ -50,7 +53,11 @@ sub _obj_of {
 
 sub clear_up {
   SL::DB::Manager::Customer->delete_all(all => 1);
-  SL::DB::Manager::CustomVariableConfig->delete_all(all => 1);
+  if (@test_cvar_config_ids) {
+    SL::DB::Manager::CustomVariable->delete_all(where => [ config_id => \@test_cvar_config_ids ]);
+    SL::DB::Manager::CustomVariableConfig->delete_all(where => [ id => \@test_cvar_config_ids ]);
+    @test_cvar_config_ids = ();
+  }
 
   SL::DB::Default->get->update_attributes(customernumber => '10000');
 
@@ -92,8 +99,8 @@ my $customer_id = _obj_of($entries->[0])->id;
 $entries = undef;
 
 $file = \<<EOL;
-customernumber;name;street;
-10001;CustomerName;NewCustomerStreet
+customernumber;name;street;country
+10001;CustomerName;NewCustomerStreet;United Kingdom
 EOL
 
 $entries = do_import($file, {update_policy => 'update_existing'});
@@ -104,6 +111,7 @@ is _obj_of($entries->[0])->name,           'CustomerName',      'update entry - 
 is _obj_of($entries->[0])->street,         'NewCustomerStreet', 'update entry - street (customer)';
 is _obj_of($entries->[0]),                 $entries->[0]->{object_to_save}, 'update entry - object is object_to_save (customer)';
 is _obj_of($entries->[0])->id,             $customer_id,        'update entry - same id (customer)';
+is _obj_of($entries->[0])->country->iso2,  'GB',                'update entry - country (customer)';
 $default_customernumer = SL::DB::Default->get->load->customernumber;
 is $default_customernumer, '10001', 'update entry - defaults range of numbers (customer)';
 
@@ -187,7 +195,7 @@ clear_up;
 # leave it untouched?)
 
 # create cvars
-SL::DB::CustomVariableConfig->new(
+my $cvar_config1 = SL::DB::CustomVariableConfig->new(
   module              => 'CT',
   name                => 'no_default',
   description         => 'no default',
@@ -197,8 +205,9 @@ SL::DB::CustomVariableConfig->new(
   includeable         => 0,
   included_by_default => 0,
 )->save;
+push @test_cvar_config_ids, $cvar_config1->id;
 
-SL::DB::CustomVariableConfig->new(
+my $cvar_config2 = SL::DB::CustomVariableConfig->new(
   module              => 'CT',
   name                => 'with_default',
   description         => 'with default',
@@ -209,6 +218,7 @@ SL::DB::CustomVariableConfig->new(
   includeable         => 0,
   included_by_default => 0,
 )->save;
+push @test_cvar_config_ids, $cvar_config2->id;
 
 # - new customer in csv - no cvars given -> one should be unset, the other one
 #   should have the default value

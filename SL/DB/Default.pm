@@ -31,7 +31,7 @@ sub address {
 
   my $zipcode_city = join ' ', grep { $_ } ($self->address_zipcode, $self->address_city);
 
-  return join "\n", grep { $_ } ($self->address_street1, $self->address_street2, $zipcode_city, $self->address_country);
+  return join "\n", grep { $_ } ($self->address_street1, $self->address_street2, $zipcode_city, $self->address_country->description_localized($::myconfig{countrycode}));
 }
 
 1;

@@ -64,7 +64,7 @@
     </tr>
     <tr>
       <th>[% 'Country' | $T8 %]</th>
-      <td>[% L.input_tag_trim('cv.country', SELF.cv.country, class='wi-lightwide') %]</td>
+      <td>[% P.country.picker('cv.country_id', SELF.cv.country_id, class => 'wi-lightwide') %]</td>
     </tr>
     <tr>
       <th>[% 'GLN' | $T8 %]</th>
@@ -90,7 +90,7 @@
     </tr>
     <tr>
       <th>[% 'Phone' | $T8 %]</th>
-      <td>[% L.input_tag_trim('cv.phone', SELF.cv.phone, class='wi-lightwide') %]</td>
+      <td>[% P.input_phone_tag('cv.phone', SELF.cv.phone, class='wi-lightwide') %]</td>
     </tr>
     <tr>
       <th>[% 'Fax' | $T8 %]</th>
@@ -143,12 +143,19 @@
       <th>[% IF ( SELF.is_vendor() ) %][% 'Type of Vendor' | $T8 %][% ELSE %][% 'Type of Customer' | $T8 %][% END %]</th>
       <td>[% L.select_tag('cv.business_id', SELF.all_business, default = SELF.cv.business_id, value_key = 'id', title_key = 'description', with_empty=1, class='wi-lightwide') %]</td>
     </tr>
+    <tr>
     [% IF ( SELF.is_customer() ) %]
       <th>[% 'Salesman' | $T8 %]</th>
       <td>
         [% L.select_tag('cv.salesman_id', SELF.all_salesmen, default = SELF.cv.salesman_id, value_key = 'id', title_key = 'safe_name', with_empty = 1, class='wi-lightwide') %]
       </td>
+    [%- ELSE %]
+      <th>[% 'Buyer' | $T8 %]</th>
+      <td>
+        [% L.select_tag('cv.buyer_id', SELF.all_buyer, default = SELF.cv.buyer_id, value_key = 'id', title_key = 'safe_name', with_empty = 1, class='wi-lightwide') %]
+      </td>
     [%- END %]
+    </tr>
     <tr>
       <th>[% 'Language' | $T8 %]</th>
       <td>[% L.select_tag('cv.language_id', SELF.all_languages, default = SELF.cv.language_id, value_key = 'id', title_key='description', with_empty=1, class='wi-lightwide') %]</td>
@@ -347,6 +354,14 @@
         <span class="label above">[% 'Delivery Terms' | $T8 %]</span>
         [% L.select_tag('cv.delivery_term_id', SELF.all_delivery_terms, default = SELF.cv.delivery_term_id, value_key = 'id', title_key = 'description', with_empty = 1, class='wi-small-lightwide') %]</td>
     </tr>
+    [% IF ( SELF.is_customer() ) %]
+    <tr>
+      <th colspan="2">
+        <span class="label above">[% 'Reduction Terms' | $T8 %]</span>
+        [% L.textarea_tag('cv.reduction_terms', SELF.cv.reduction_terms, rows=4, class='wi-small-lightwide') %]
+      </th>
+    </tr>
+    [% END %]
   </tbody>
 </table>
 

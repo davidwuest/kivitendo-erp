@@ -43,10 +43,10 @@
         </td>
       </tr>
 
-      <tr id='contact_row' [%- IF !SELF.reclamation.${SELF.cv}.contacts.size %]style='display:none'[%- END %]>
+      <tr id='contact_row' [%- IF !SELF.cv_assigned_contacts.size %]style='display:none'[%- END %]>
         <th>[% 'Contact Person' | $T8 %]</th>
         <td>[% L.select_tag('reclamation.contact_id',
-                            SELF.reclamation.${SELF.cv}.contacts,
+                            SELF.cv_assigned_contacts,
                             default=SELF.reclamation.contact_id,
                             title_key='full_name_dep',
                             value_key='cp_id',
@@ -259,7 +259,7 @@
 
     <tr>
       <th>[% 'Reclamation Number' | $T8 %]</th>
-      <td>[% L.input_tag('reclamation.record_number', SELF.reclamation.record_number, onchange='kivi.Reclamation.set_number_in_title(this)', class='wi-normal') %]</td>
+      <td>[% L.input_tag('reclamation.record_number', SELF.reclamation.record_number, class='wi-normal') %]</td>
     </tr>
 
     <tr>
@@ -318,7 +318,7 @@
           </th>
         <th>[% 'position' | $T8 %] </th>
         <th style='text-align:center'><img src="image/updown.png" alt="[%- LxERP.t8('reorder item') %]"></th>
-        <th style='text-align:center'><img src="image/close.png" alt="[%- LxERP.t8('delete item') %]"></th>
+        <th style='text-align:center'><img src="image/close.png" alt="[%- LxERP.t8('delete item') %]" class="close"></th>
         [%- IF SELF.show_update_button -%]
         <th style='text-align:center'>
           [%- L.img_tag(src="image/rotate_cw.svg",

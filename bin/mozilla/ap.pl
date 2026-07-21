@@ -314,6 +314,7 @@ sub add {
 
     # set initial payment terms
     $form->{payment_id} = $vendor->payment_id;
+    $form->{buyer_id}   = $vendor->buyer_id;
 
     my $last_used_ap_chart = $vendor->last_used_ap_chart;
     $form->{"AP_amount_chart_id_1"} = $last_used_ap_chart->id if $last_used_ap_chart;
@@ -482,6 +483,14 @@ sub form_header {
   );
 
   $form->{ALL_DEPARTMENTS} = SL::DB::Manager::Department->get_all_sorted;
+
+  my $current_employee   = SL::DB::Manager::Employee->current;
+
+  $::form->{employee_id} ||= $current_employee->id;
+  $::form->{buyer_id}    ||= $current_employee->id;
+
+  $form->{ALL_EMPLOYEES}  = SL::DB::Manager::Employee->get_all_sorted(query => [ or => [ id => $::form->{employee_id}, deleted => 0 ] ]);
+  $form->{ALL_BUYERS}     = SL::DB::Manager::Employee->get_all_sorted(query => [ or => [ id => $::form->{buyer_id},    deleted => 0 ] ]);
 
   my %project_labels = map { $_->id => $_->projectnumber }  @{ SL::DB::Manager::Project->get_all };
 
@@ -717,6 +726,14 @@ sub block_or_unblock_sepa_transfer {
   $::form->redirect($::form->{unblock_sepa} ? t8('Bank transfer via SEPA is unblocked') : t8('Bank transfer via SEPA is blocked'));
 }
 
+sub approve_payment {
+  $::auth->assert('ap_transactions');
+
+  SL::DB::PaymentApproval->new(ap_id => $::form->{id}, employee_id => SL::DB::Manager::Employee->current->id)->save;
+
+  $::form->redirect(t8('Payment Approved'));
+}
+
 sub show_draft {
   $::form->{transdate} = DateTime->today_local->to_kivitendo if !$::form->{transdate};
   $::form->{gldate}    = $::form->{transdate} if !$::form->{gldate};
@@ -775,8 +792,9 @@ sub update {
 
     my $vendor = SL::DB::Vendor->load_cached($form->{vendor_id});
 
-    # reset payment to new vendor
+    # reset payment to new vendor and reset buyer
     $form->{payment_id} = $vendor->payment_id;
+    $form->{buyer_id}   = $vendor->buyer_id;
 
     if (($form->{rowcount} == 1) && ($form->{amount_1} == 0)) {
       my $last_used_ap_chart = $vendor->last_used_ap_chart;
@@ -954,6 +972,7 @@ sub post {
   }
 
   # if old vendor ne vendor redo form
+  # copy paste dead code from ar.pl -> customer???
   if (($form->{previous_customer_id} || $form->{customer_id}) != $form->{customer_id}) {
     &update;
     $::dispatcher->end_request;
@@ -1194,8 +1213,8 @@ sub ap_transactions {
 
   my @columns =
     qw(transdate id type invnumber ordnumber name netamount tax amount paid datepaid
-       due duedate transaction_description notes intnotes employee globalprojectdescription globalprojectnumber department
-       vendornumber country ustid taxzone payment_terms charts debit_chart direct_debit
+       due duedate transaction_description notes intnotes buyer employee globalprojectdescription globalprojectnumber department
+       vendornumber country ustid taxzone payment_terms payment_approved charts debit_chart direct_debit
        insertdate items);
 
   my @hidden_variables = map { "l_${_}" } @columns;
@@ -1224,6 +1243,7 @@ sub ap_transactions {
     'transaction_description' => { 'text' => $locale->text('Transaction description'), },
     'notes'                   => { 'text' => $locale->text('Notes'), },
     'intnotes'                => { 'text' => $locale->text('Internal Notes'), },
+    'buyer'                   => { 'text' => $locale->text('Buyer'), },
     'employee'                => { 'text' => $locale->text('Employee'), },
     'globalprojectdescription' => { 'text' => $locale->text('Document Project Description'), },
     'globalprojectnumber'     => { 'text' => $locale->text('Document Project Number'), },
@@ -1233,6 +1253,7 @@ sub ap_transactions {
     'ustid'                   => { 'text' => $locale->text('USt-IdNr.'), },
     'taxzone'                 => { 'text' => $locale->text('Tax rate'), },
     'payment_terms'           => { 'text' => $locale->text('Payment Terms'), },
+    'payment_approved'        => { 'text' => $locale->text('Payment Approved'), },
     'charts'                  => { 'text' => $locale->text('Chart'), },
     'debit_chart'             => { 'text' => $locale->text('Debit Account'), },
     'direct_debit'            => { 'text' => $locale->text('direct debit'), },
@@ -1427,6 +1448,7 @@ sub add_from_purchase_order {
   $::form->{title}                   = "Add";
   $::form->{vc}                      = 'vendor';
   $::form->{vendor_id}               = $order->customervendor->id;
+  $::form->{buyer_id}                = $order->buyer_id;
   $::form->{vendor}                  = $order->vendor->name;
   $::form->{convert_from_oe_id}      = $order->id;
   $::form->{globalproject_id}        = $order->globalproject_id;
@@ -1558,10 +1580,11 @@ sub setup_ap_display_form_action_bar {
   my $may_edit_create         = $::auth->assert('ap_transactions', 1);
 
   my $has_sepa_exports;
-  my $is_sepa_blocked;
+  my ($is_sepa_blocked, $is_payment_approved);
   if ($::form->{id}) {
     my $invoice = SL::DB::Manager::PurchaseInvoice->find_by(id => $::form->{id});
     $has_sepa_exports = 1 if ($invoice->find_sepa_export_items()->[0]);
+    $is_payment_approved = 1 if ($invoice->payment_approval);
     $is_sepa_blocked  = !!$invoice->is_sepa_blocked;
   }
 
@@ -1643,6 +1666,14 @@ sub setup_ap_display_form_action_bar {
           submit   => [ '#form', { action => "block_or_unblock_sepa_transfer", unblock_sepa => !!$is_sepa_blocked } ],
           disabled => !$may_edit_create ? t8('You must not change this AP transaction.')
                     : !$::form->{id}    ? t8('This invoice has not been posted yet.')
+                    :                     undef,
+        ],
+        action => [ t8('Approve Payment'),
+          submit   => [ '#form', { action => "approve_payment", } ],
+          disabled => !$may_edit_create ? t8('You must not change this AP transaction.')
+                    : !$::form->{id}    ? t8('This invoice has not been posted yet.')
+                    : $is_payment_approved ? t8('This transaction is already approved.')
+                    : $is_linked_bank_transaction ? t8('This transaction is linked with a bank transaction.')
                     :                     undef,
         ],
         action => [ t8('Mark as paid'),
@@ -1739,7 +1770,7 @@ sub setup_search_profile_manager {
       { type   => 'boolean',
         fields => [ qw(open closed l_transdate l_duedate l_datepaid l_insertdate l_id l_invnumber l_ordnumber l_globalprojectnumber l_globalprojectdescription l_transaction_description
                        l_netamount l_tax l_subtotal l_amount l_paid l_due l_employee l_notes l_intnotes l_department l_charts l_taxzone l_payment_terms l_direct_debit l_debit_chart l_items
-                       l_name l_vendornumber l_country l_ustid) ] },
+                       l_name l_vendornumber l_country l_ustid l_payment_approved) ] },
       { type   => 'date',
         fields => [ qw(datepaidfrom datepaidto duedatefrom duedateto insertdatefrom insertdateto transdatefrom transdateto) ] },
       { type   => 'integer',

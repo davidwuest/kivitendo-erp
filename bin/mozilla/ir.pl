@@ -303,10 +303,11 @@ sub setup_ir_action_bar {
   my $may_edit_create         = $::auth->assert('vendor_invoice_edit', 1);
 
   my $has_sepa_exports;
-  my $is_sepa_blocked;
+  my ($is_sepa_blocked, $is_payment_approved);
   if ($form->{id}) {
     my $invoice = SL::DB::Manager::PurchaseInvoice->find_by(id => $form->{id});
     $has_sepa_exports = 1 if ($invoice->find_sepa_export_items()->[0]);
+    $is_payment_approved = 1 if ($invoice->payment_approval);
     $is_sepa_blocked  = !!$invoice->is_sepa_blocked;
   }
 
@@ -381,6 +382,14 @@ sub setup_ir_action_bar {
           submit   => [ '#form', { action => "block_or_unblock_sepa_transfer", unblock_sepa => !!$is_sepa_blocked } ],
           disabled => !$may_edit_create ? t8('You must not change this AP transaction.')
                     : !$::form->{id}    ? t8('This invoice has not been posted yet.')
+                    :                     undef,
+        ],
+        action => [ t8('Approve Payment'),
+          submit   => [ '#form', { action => "approve_payment", } ],
+          disabled => !$may_edit_create ? t8('You must not change this AP transaction.')
+                    : !$::form->{id}    ? t8('This invoice has not been posted yet.')
+                    : $is_payment_approved ? t8('This transaction is already approved.')
+                    : $is_linked_bank_transaction ? t8('This transaction is linked with a bank transaction.')
                     :                     undef,
         ],
         action => [
@@ -486,9 +495,10 @@ sub form_header {
   $TMPL_VAR->{vendor_obj}  = SL::DB::Vendor->load_cached($form->{vendor_id})   if $form->{vendor_id};
   my $current_employee   = SL::DB::Manager::Employee->current;
   $form->{employee_id}   = $form->{old_employee_id} if $form->{old_employee_id};
-  $form->{salesman_id}   = $form->{old_salesman_id} if $form->{old_salesman_id};
+  $form->{buyer_id}      = $form->{old_buyer_id}    if $form->{old_buyer_id};
   $form->{employee_id} ||= $current_employee->id;
-  $form->{salesman_id} ||= $current_employee->id;
+  $form->{buyer_id}    ||= $TMPL_VAR->{vendor_obj}->buyer_id if ref $TMPL_VAR->{vendor_obj} eq 'SL::DB::Vendor';
+  $form->{buyer_id}    ||= $current_employee->id;
 
   $form->{defaultcurrency} = $form->get_default_currency(\%myconfig);
 
@@ -504,15 +514,18 @@ sub form_header {
   $TMPL_VAR->{ALL_DEPARTMENTS}       = SL::DB::Manager::Department->get_all_sorted;
   $TMPL_VAR->{ALL_DELIVERY_TERMS}    = SL::DB::Manager::DeliveryTerm->get_valid($::form->{delivery_term_id});
   $TMPL_VAR->{ALL_EMPLOYEES}         = SL::DB::Manager::Employee->get_all_sorted(query => [ or => [ id => $::form->{employee_id},  deleted => 0 ] ]);
-  $TMPL_VAR->{ALL_CONTACTS}          = SL::DB::Manager::Contact->get_all_sorted(query => [
-    or => [
-      cp_cv_id => $::form->{"$::form->{vc}_id"} * 1,
-      and      => [
-        cp_cv_id => undef,
-        cp_id    => $::form->{cp_id} * 1
+  $TMPL_VAR->{ALL_BUYERS}            = SL::DB::Manager::Employee->get_all_sorted(query => [ or => [ id => $::form->{buyer_id},     deleted => 0 ] ]);
+  $TMPL_VAR->{ALL_CONTACTS}          = SL::DB::Manager::Contact->get_all_sorted(
+    with_objects => ['vendors'],
+    query => [
+      or => [
+        # 1. all linked contacts for the selected vendor
+          'vendors.id' => $form->{vendor_id} * 1,
+        # 2. the currently selected contact, if the vendor was not changed
+          (cp_id       => $form->{cp_id} * 1) x !!(!$form->{previous_vendor_id} || $form->{previous_vendor_id} == $form->{vendor_id}),
       ]
     ]
-  ]);
+  );
 
   # currencies and exchangerate
   my @values = map { $_       } @{ $form->{ALL_CURRENCIES} };
@@ -703,6 +716,14 @@ sub block_or_unblock_sepa_transfer {
   $::form->redirect($::form->{unblock_sepa} ? t8('Bank transfer via SEPA is unblocked') : t8('Bank transfer via SEPA is blocked'));
 }
 
+sub approve_payment {
+  $::auth->assert('ap_transactions');
+
+  SL::DB::PaymentApproval->new(ap_id => $::form->{id}, employee_id => SL::DB::Manager::Employee->current->id)->save;
+
+  $::form->redirect(t8('Payment Approved'));
+}
+
 sub show_draft {
   $::form->{form_validity_token} = SL::DB::ValidityToken->create(scope => SL::DB::ValidityToken::SCOPE_PURCHASE_INVOICE_POST())->token;
   update();
@@ -793,7 +814,8 @@ sub update {
 
           if ($best_price) {
             $::form->{"sellprice_$i"}           = $best_price->price;
-            $::form->{"active_price_source_$i"} = $best_price->source;
+            $::form->{"active_price_source_$i"} = $::instance_conf->get_prices_always_free ? ""
+                                                                                           : $best_price->source;
           }
           if ($best_discount) {
             $::form->{"discount_$i"}               = $best_discount->discount;

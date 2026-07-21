@@ -24,7 +24,12 @@ use SL::DB::Helper::DisplayableNamePreferences (
                {name => 'city',           title => t8('City') },
                {name => 'zipcode',        title => t8('Zipcode')},
                {name => 'email',          title => t8('E-Mail') },
-               {name => 'phone',          title => t8('Phone')  }, ]
+               {name => 'phone',          title => t8('Phone')  },
+               {name => 'country',        title => t8('Country'), sub => sub { $_[0]->country->description_localized($::myconfig{countrycode}) } }, ]
+);
+use SL::DB::Helper::CustomerVendorContacts (
+  join_package  => 'SL::DB::VendorContact',
+  join_accessor => 'vendor_id',
 );
 
 use SL::DB::VC;
@@ -37,11 +42,10 @@ __PACKAGE__->meta->add_relationship(
     manager_args => { sort_by => 'lower(shipto.shiptoname)' },
     query_args   => [ module  => 'CT' ],
   },
-  contacts => {
-    type         => 'one to many',
-    class        => 'SL::DB::Contact',
-    column_map   => { id      => 'cp_cv_id' },
-    manager_args => { sort_by => 'lower(contacts.cp_name)' },
+  vendor_contacts => {
+    type => 'one to many',
+    class => 'SL::DB::VendorContact',
+    column_map => { id => 'vendor_id' },
   },
   linked_customer_vendor_rel => {
     type       => 'many to many',

@@ -2,8 +2,7 @@
 [% USE L %]
 [% USE HTML %]
 [% USE LxERP %]
-
-<h1>[% title %]</h1>
+[% USE P %]
 
 <form method="post" action="ct.pl" name="Form" id="form">
 <input type="hidden" name="db" value="[% HTML.escape(db) %]">
@@ -71,7 +70,7 @@
         </tr>
         <tr>
           <th>[% 'Country' | $T8 %] </th>
-          <td><input type="text" name="addr_country" class="wi-normal"></td>
+          <td>[% P.country.picker("addr_country_id", "", with_empty = 1, class = 'wi-normal') %]</td>
         </tr>
         <tr>
           <th>[% 'GLN' | $T8 %] </th>
@@ -119,7 +118,8 @@
         <th>[% 'Scope' | $T8 %] </th>
         <td>
           <input name="status" type="radio" value="all" checked id="chckb1"> <label for="chckb1">[% 'All' | $T8 %]</label>
-          <input name="status" type="radio" value="orphaned" id="chckb2"> <label for="chckb2">[% 'Orphaned' | $T8 %]</label>
+          <input name="status" type="radio" value="orphaned" id="chckb2"> <label for="chckb2">[% 'Orphaned (no records)' | $T8 %]</label>
+          <input name="status" type="radio" value="quotations_at_best" id="chckb3"> <label for="chckb3">[% 'Orphaned (quotations at best)' | $T8 %]</label>
         </td>
       </tr>
       <tr>
@@ -213,6 +213,11 @@
       <input name="l_linked_customer_vendor" id="l_linked_customer_vendor" type="checkbox" class="checkbox" value="Y">
       <label for="l_linked_customer_vendor">[% IF IS_CUSTOMER %][% 'Linked Vendor' | $T8 %][% ELSE %][% 'Linked Customer' | $T8 %][% END %]</label>
     </div>
+    [%- IF IS_CUSTOMER %]
+    <div>
+       [%- P.checkbox_tag("l_reduction_terms", label = LxERP.t8("Reduction Terms"), value = "Y", class = "checkbox") %]
+    </div>
+    [%- END %]
   </div>
 
   <div class="list col">
@@ -294,6 +299,10 @@
     <div>
       <input name="l_insertdate" id="l_insertdate" type="checkbox" value="Y">
       <label for="l_insertdate"> [% 'Insert Date' | $T8 %] </label>
+    </div>
+    <div>
+      <input name="l_obsolete" id="l_obsolete" type="checkbox" value="Y">
+      <label for="l_obsolete"> [% 'Validity' | $T8 %] </label>
     </div>
     [% IF IS_CUSTOMER %]
     <div>

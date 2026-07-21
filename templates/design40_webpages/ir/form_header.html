@@ -4,11 +4,6 @@
 [% USE L %]
 [% USE P %]
 
-<h1>
-  [% IF workflow_email_journal_id; LxERP.t8("Email Journal Workflow") _ " - "; END; %]
-  [% title %]
-</h1>
-
 [% SET follow_up_trans_info = invnumber _ ' (' _ vendor_obj.name _ ')' %]
 <script type="text/javascript" src="js/common.js"></script>
 <script type="text/javascript" src="js/calculate_qty.js"></script>
@@ -16,7 +11,7 @@
 
 <form id='form' method="post" name="invoice" action="[% script %]">
 
-<p>[% saved_message %]</p>
+[% IF saved_message != '' %]<p>[% saved_message %]</p>[% END %]
 
 [% FOREACH key = HIDDENS %]
 [% L.hidden_tag(key, $key) %]
@@ -236,7 +231,11 @@
     <tbody>
       <tr>
         <th>[% 'Employee' | $T8 %]</th>
-        <td>[% L.select_tag('employee_id', ALL_EMPLOYEES, default = employee_id, title_key = 'safe_name', class='wi-wide') %]</td>
+        <td>[% L.select_tag('employee_id', ALL_EMPLOYEES, default = employee_id, title_key = 'safe_name', class='wi-mediumsmall') %]</td>
+      </tr>
+      <tr>
+        <th>[% 'Buyer' | $T8 %]</th>
+        <td>[% L.select_tag('buyer_id', ALL_BUYERS, default = buyer_id, title_key = 'safe_name', class='wi-mediumsmall') %]</td>
       </tr>
       <tr>
         <th>[% 'Order Number' | $T8 %]</th>
@@ -288,8 +287,12 @@
         <th>[% 'Delivery Date' | $T8 %]</th>
         <td>[% L.date_tag('deliverydate', deliverydate, class='wi-small') %]</td>
       </tr>
-
-
+      [% IF INSTANCE_CONF.get_payment_approval %]
+        <tr>
+          <th>[% 'Payment Approved' | $T8 %]</th>
+          <td><span class="data wi-small">[% invoice_obj.payment_approval.itime_as_date | html %] [% invoice_obj.payment_approval.employee.safe_name | html %]</span></td>
+        </tr>
+      [% END %]
     </tbody>
   </table>
 

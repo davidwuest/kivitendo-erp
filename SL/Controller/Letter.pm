@@ -25,6 +25,8 @@ use SL::Presenter::Tag qw(select_tag);
 use SL::ReportGenerator;
 use SL::Webdav;
 use SL::Webdav::File;
+use List::Util qw(first);
+use List::MoreUtils qw(any none);
 
 use Rose::Object::MakeMethods::Generic (
   'scalar --get_set_init' => [ qw(letter all_employees models webdav_objects is_sales) ],
@@ -114,19 +116,12 @@ sub action_update_contacts {
 
   my $contacts = $letter->customer_vendor->contacts;
 
-  my $default;
-  if (   $letter->contact
-      && $letter->contact->cp_cv_id
-      && $letter->contact->cp_cv_id == $letter->customer_vendor_id) {
-    $default = $letter->contact->cp_id;
-  } else {
-    $default = '';
-  }
+  my $default = ($letter->contact && any { $_->cp_id == $letter->contact->cp_id } @{$contacts // []}) ? $letter->contact->cp_id : '';
 
   $self->js
     ->replaceWith(
       '#letter_cp_id',
-      select_tag('letter.cp_id', $contacts, default => $default, value_key => 'cp_id', title_key => 'full_name')
+      select_tag('letter.cp_id', $contacts, default => $default, with_empty => 1, value_key => 'cp_id', title_key => 'full_name')
     )
     ->render;
 }
@@ -177,6 +172,11 @@ sub action_print_letter {
 
   my $letter = $self->_update;
 
+  my %print_form                 = %$::form;
+  my $language_code              = SL::DB::Manager::Language->find_by_or_create(id => $::form->{language_id}*1)->template_code;
+  $print_form{customer}          = $self->letter->customer_vendor;
+  $print_form{customer}{country} = $self->letter->customer_vendor->country->description_localized($language_code) if $self->letter->customer_vendor;
+
   my ($template_file, @template_files) = SL::Helper::CreatePDF->find_template(
     name        => 'letter',
     printer_id  => $::form->{printer_id},
@@ -194,7 +194,7 @@ sub action_print_letter {
     %result = SL::Template::LaTeX->parse_and_create_pdf(
       $template_file,
       SELF          => $self,
-      FORM          => $::form,
+      FORM          => \%print_form,
       letter        => $letter,
       template_meta => {
         formname  => 'letter',
@@ -455,7 +455,7 @@ sub load_letter_draft {
 
   $self->setup_load_letter_draft_action_bar;
   $self->render('letter/load_drafts',
-    title         => t8('Letter Draft'),
+    title         => t8('Load letter draft'),
     LETTER_DRAFTS => $letter_drafts,
   );
 
@@ -587,6 +587,17 @@ sub check_auth_edit {
 sub check_auth_report {
   $::form->{is_sales} ? $::auth->assert('sales_letter_report')
                       : $::auth->assert('purchase_letter_report');
+}
+
+sub cv_assigned_contacts {
+  my ($self) = @_;
+
+  my $contacts = $self->letter->customer_vendor ? $self->letter->customer_vendor->contacts() : [];
+  if ($self->letter->contact && none { $_->cp_id == $self->letter->contact->cp_id } @$contacts) {
+    push @$contacts, $self->letter->contact;
+  }
+
+  $contacts;
 }
 
 sub setup_load_letter_draft_action_bar {

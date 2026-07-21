@@ -53,6 +53,7 @@ use SL::Helper::UserPreferences::ItemInputPosition;
 
 use SL::Controller::Helper::GetModels;
 
+use DateTime;
 use List::Util qw(first sum0);
 use List::UtilsBy qw(sort_by uniq_by);
 use List::MoreUtils qw(uniq any none pairwise first_index);
@@ -680,6 +681,25 @@ sub action_send_email {
   $self->redirect_to(@redirect_params);
 }
 
+# export the order as csv and offer for download
+sub action_csv_export {
+  my ($self) = @_;
+
+  my $csv_string  = $self->order->export_as_csv_string(compatible_for_import => 0);
+
+  my $type_prefix = $self->type;
+  my $number      = $self->order->number;
+  $number         =~ s{[^[:word:]]+}{_}g;
+  my $timestamp   = DateTime->now_local->strftime('%Y-%m-%d_%H-%M-%S');
+  my $filename    = sprintf('%s_%s_%s.csv', $type_prefix, $number, $timestamp);
+
+  $self->send_file(
+    \$csv_string,
+    type => SL::MIME->mime_type_from_ext($filename),
+    name => $filename,
+  );
+}
+
 # open the periodic invoices config dialog
 #
 # If there are values in the form (i.e. dialog was opened before),
@@ -734,8 +754,8 @@ sub action_show_periodic_invoices_config_dialog {
   $::form->{AR} = [ grep { $_->{link} =~ m/(?:^|:)AR(?::|$)/ } @{ $::form->{ALL_CHARTS} } ];
 
   if ($::form->{customer_id}) {
-    $::form->{ALL_CONTACTS} = SL::DB::Manager::Contact->get_all_sorted(where => [ cp_cv_id => $::form->{customer_id} ]);
-    my $customer_object = SL::DB::Manager::Customer->find_by(id => $::form->{customer_id});
+    my $customer_object                        = $self->order->customervendor;
+    $::form->{ALL_CONTACTS}                    = $customer_object->contacts;
     $::form->{postal_invoice}                  = $customer_object->postal_invoice;
     $::form->{email_recipient_invoice_address} = $::form->{postal_invoice} ? '' : $customer_object->invoice_mail;
     $config->send_email(0) if $::form->{postal_invoice};
@@ -977,6 +997,7 @@ sub action_customer_vendor_changed {
   }
 
   $self->js->val( '#order_salesman_id',      $self->order->salesman_id)        if $self->order->is_sales;
+  $self->js->val( '#order_buyer_id',         $self->order->buyer_id)           if !$self->order->is_sales;
 
   $self->js
     ->replaceWith('#order_cp_id',              $self->build_contact_select)
@@ -1702,6 +1723,17 @@ sub check_auth_for_edit {
   $::auth->assert($self->type_data->rights('edit'));
 }
 
+sub cv_assigned_contacts {
+  my ($self) = @_;
+
+  my $contacts = $self->order->customervendor ? $self->order->customervendor->contacts() : [];
+  if ($self->order->contact && none { $_->cp_id == $self->order->contact->cp_id } @$contacts) {
+    push @$contacts, $self->order->contact;
+  }
+
+  $contacts;
+}
+
 # build the selection box for contacts
 #
 # Needed, if customer/vendor changed.
@@ -1713,7 +1745,7 @@ sub build_contact_select {
     title_key  => 'full_name_dep',
     default    => $self->order->cp_id,
     with_empty => 1,
-    style      => 'width: 300px',
+    class      => 'wi-lightwide',
   );
 }
 
@@ -1731,7 +1763,7 @@ sub build_billing_address_select {
              title_key  => 'displayable_id',
              default    => $self->order->billing_address_id,
              with_empty => 0,
-             style      => 'width: 300px',
+             class      => 'wi-lightwide',
   );
 }
 
@@ -1747,7 +1779,7 @@ sub build_shipto_select {
              title_key  => 'displayable_id',
              default    => $self->order->shipto_id,
              with_empty => 0,
-             style      => 'width: 300px',
+             class      => 'wi-lightwide',
   );
 }
 
@@ -1970,7 +2002,8 @@ sub new_item {
   $new_attr{price_factor_id}        = $item->part->price_factor_id if ! $item->price_factor_id;
   $new_attr{sellprice}              = $price_src->price;
   $new_attr{discount}               = $discount_src->discount;
-  $new_attr{active_price_source}    = $price_src;
+  $new_attr{active_price_source}    = $::instance_conf->get_prices_always_free ? SL::PriceSource->new()->price_from_source("")
+                                                                               : $price_src;
   $new_attr{active_discount_source} = $discount_src;
   $new_attr{longdescription}        = $texts->{longdescription}    if ! defined $attr->{longdescription};
   $new_attr{project_id}             = $record->globalproject_id;
@@ -2101,7 +2134,7 @@ sub check_if_periodic_invoices_contact_matches_customer {
   my $contact = SL::DB::Manager::Contact->find_by(cp_id => $cfg->email_recipient_contact_id);
   return if !$contact;
 
-  if ($contact->cp_cv_id != $self->order->customer_id) {
+  if (none { $_->cp_id == $contact->cp_id } $self->order->customervendor->contacts) {
     $cfg->update_attributes(email_recipient_contact_id => undef);
   }
 }
@@ -2628,6 +2661,13 @@ sub setup_edit_action_bar {
                     : !$self->order->id ? t8('This object has not been saved yet.')
                     : undef,
           only_if  => $self->type_data->show_menu('save_and_email'),
+        ],
+        action => [
+          t8('Export as CSV'),
+          submit   => [ '#order_form', { action => "Order/csv_export" } ],
+          disabled => !$may_edit_create ? t8('You do not have the permissions to access this function.')
+                    : undef,
+          only_if  => $self->type_data->show_menu('csv_export'),
         ],
         action => [
           t8('Download attachments of all parts'),

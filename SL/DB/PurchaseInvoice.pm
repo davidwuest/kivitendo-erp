@@ -10,6 +10,7 @@ use SL::DB::MetaSetup::PurchaseInvoice;
 use SL::DB::Manager::PurchaseInvoice;
 use SL::DB::Helper::AttrHTML;
 use SL::DB::Helper::AttrSorted;
+use SL::DB::Helper::FlattenToForm;
 use SL::DB::Helper::LinkedRecords;
 use SL::DB::Helper::Payment qw(:ALL);
 use SL::DB::Helper::RecordLink qw(RECORD_ID RECORD_TYPE_REF RECORD_ITEM_ID RECORD_ITEM_TYPE_REF);
@@ -53,6 +54,12 @@ __PACKAGE__->meta->add_relationship(
     manager_args => { with_objects => [ 'chart' ],
                       sort_by      => 'acc_trans_id ASC' }
   },
+  payment_approval => {
+    type            => 'one to one',
+    class           => 'SL::DB::PaymentApproval',
+    column_map      => { id => 'ap_id' },
+  },
+
 );
 
 __PACKAGE__->meta->initialize;

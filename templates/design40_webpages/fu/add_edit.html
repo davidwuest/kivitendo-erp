@@ -2,13 +2,12 @@
 [% USE L %]
 [% USE HTML %]
 [% USE LxERP %]
-<h1>[% title %]</h1>
+[% USE P %]
 
 <script type="text/javascript">
   $(function(){ document.Form.subject.focus(); });
 </script>
 
-<div class="wrapper">
 <form action="fu.pl" method="post" name="Form" id="form">
 
 [% IF SAVED_MESSAGE %]
@@ -29,8 +28,35 @@
 [% END %]
 
 <div class="wrapper">
+  <table class="tbl-horizontal">
+    <tbody>
+      [% FOREACH row = LINKS %]
+        <tr>
+          <th>[% 'Reference' | $T8 %]</th>
+          <td>[% P.link_tag(row.url, HTML.escape(row.title), target="_blank") %]</td>
+        </tr>
+      [% END %]
+      <tr>
+        <th>[% 'Follow-Up Date' | $T8 %]</th>
+        <td>[% L.date_tag('follow_up_date', follow_up_date, class="wi-date") %]</td>
+      </tr>
+      <tr>
+        <th>[% 'Subject' | $T8 %]</th>
+        <td><input type="text" name="subject" value="[% HTML.escape(subject) %]" class="wi-wider"></td>
+      </tr>
+      <tr>
+        <th>[% 'Body' | $T8 %]</th>
+        <td><textarea class="wi-wider" rows="10" name="body">[% HTML.escape(body) %]</textarea></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+
+<div class="wrapper">
+  <h3>[% 'Follow-Up for user' | $T8 %]</h3>
+  <div class="col">
   <table class="tbl-list">
-    <caption>[% 'Follow-Up for user' | $T8 %]</caption>
     <thead>
       <tr>
         <th>[% L.checkbox_tag('checkall_checkboxes', label='', id='checkall', checkall="[data-checkall=1]") %]</th>
@@ -51,6 +77,9 @@
       [% END %]
     </tbody>
   </table>
+  </div>
+
+  <div class="col">
   <table class="tbl-list">
     <thead>
       <tr>
@@ -72,29 +101,11 @@
       [% END %]
     </tbody>
   </table>
-</div>
-
-<div class="wrapper">
-  <table class="tbl-horizontal">
-    <tbody>
-      <tr>
-        <th>[% 'Follow-Up Date' | $T8 %]</th>
-        <td>[% L.date_tag('follow_up_date', follow_up_date, class="wi-date") %]</td>
-      </tr>
-      <tr>
-        <th>[% 'Subject' | $T8 %]</th>
-        <td><input type="text" name="subject" value="[% HTML.escape(subject) %]" class="wi-wider"></td>
-      </tr>
-      <tr>
-        <th>[% 'Body' | $T8 %]</th>
-        <td><textarea class="wi-wider" rows="10" name="body">[% HTML.escape(body) %]</textarea></td>
-      </tr>
-    </tbody>
-  </table>
+  </div>
 </div>
 
 [% IF POPUP_MODE %]
-<div class="buttons">
+<div class="buttons wrapper">
   <input type="hidden" name="action" value="dispatcher">
   <input type="submit" name="action_save" value="[% 'Save' | $T8 %]">
   [% IF id %]
@@ -105,7 +116,8 @@
 </div>
 
 [%- IF FOLLOW_UPS_PENDING.size %]
-<table class="tbl-list">
+<div class="wrapper">
+ <table class="tbl-list">
   <caption>[% 'Existing pending follow-ups for this item' | $T8 %]</caption>
   <colgroup>
     <col class="wi-date">
@@ -131,11 +143,13 @@
     </tr>
     [% END %]
   </tbody>
-</table>
+ </table>
+</div>
 [% END %]
 
 [%- IF FOLLOW_UPS_DONE.size %]
-<table class="tbl-list">
+<div class="wrapper">
+ <table class="tbl-list">
   <caption>[% 'Existing finished follow-ups for this item' | $T8 %]</caption>
   <colgroup>
     <col class="wi-date">
@@ -161,7 +175,8 @@
     </tr>
     [% END %]
   </tbody>
-</table>
+ </table>
+</div>
 [% END %]
 
 [% END #IF POPUP_MODE %]
@@ -175,4 +190,3 @@
 <input type="hidden" name="trans_rowcount" value="[% LINKS.size %]">
 
 </form>
-</div><!-- /.wrapper -->

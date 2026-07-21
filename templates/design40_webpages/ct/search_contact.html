@@ -3,8 +3,6 @@
 [% USE L %]
 [% USE LxERP %]
 
-<h1>[% 'Contacts' | $T8 %]</h1>
-
 <form method="post" action="ct.pl" name="Form" id="form">
 
 <div class="wrapper">
@@ -41,11 +39,11 @@
     </tr>
     [% CUSTOM_VARIABLES_FILTER_CODE %]
     <tr>
-      <th>[% 'Scope' | $T8 %] </th>
+      <th>[% 'Customer/Vendor' | $T8 %] </th>
       <td>
-        <input name="filter.status" type="radio" value="active" checked id="rd1"> <label for="rd1">[% 'Active' | $T8 %]</label>
+        <input name="filter.status" type="radio" value="active" checked id="rd1"> <label for="rd1">[% 'Assigned' | $T8 %]</label>
         <input name="filter.status" type="radio" value="all" id="rd2"> <label for="rd2">[% 'All' | $T8 %]</label>
-        <input name="filter.status" type="radio" value="orphaned" id="rd3"> <label for="rd3">[% 'Orphaned' | $T8 %]</label>
+        <input name="filter.status" type="radio" value="orphaned" id="rd3"> <label for="rd3">[% 'Not assigned' | $T8 %]</label>
       </td>
     </tr>
   </tbody>
@@ -115,6 +113,10 @@
     <div>
       <input name="l.cp_city" id="l_cp_city" type="checkbox" value="Y">
       <label for="l_cp_city"> [% 'City' | $T8 %] </label>
+    </div>
+    <div>
+      <input name="l.cp_country" id="l_cp_country" type="checkbox" value="Y">
+      <label for="l_cp_country"> [% 'Country' | $T8 %] </label>
     </div>
   </div>
 

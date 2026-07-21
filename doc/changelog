@@ -6,6 +6,19 @@
 
 Größere neue Features:
 
+- Inventur-Zählungen erfassen und abgleichen: Zwischeninventur
+  Inventur-Zählungen lassen sich, auch eingeschränkt auf einzelne Lagerplätze,
+  zwischenspeichern. Erfasste Zählungen können Abgeglichen werden, wobei
+  zunächst ein Bericht über Ist- und Soll-Werte der Zählung zur Kontrolle
+  gezeigt wird und bei erfolgter Bestätigung Lager-Korrekturbuchungen erfolgen.
+  Im Gegensatz zum Anlegen von Inventurbuchungen über Lager->Inventur eigenen
+  sich Inventur-Zählungen für die Datenerfassung per Code-Scanner, da zuerst
+  alle Zählergebnisse gesammelt und dann alle gemeinsam in einem Schritt per
+  Lagertransaktion abgeglichen werden.
+
+- Statische Dateien befinden sich nun im Unterverzeichnis public/.
+  Dies erfordert eine Änderung der Webserver-Konfiguration.
+
 Mittelgroße neue Features:
 
 - Verbundene Kunden/Lieferanten
@@ -23,7 +36,41 @@ Mittelgroße neue Features:
   Einstellungen bei jedem Aufruf der Einkaufsrechnungssuche
   standardmäßig gesetzt werden.
 
+- SEPA Überweisungen für Lieferantenrechnungen können zusammengefasst und
+  mit Gutschriften verrechnet werden. Zusätzlich wird beim Rückimport von der
+  Bank über das MT940 Verfahren diese Überweisung direkt beim Import verbucht
+  (falls SEPA EndToEndID und Überweisungssumme identisch ist).
+
+- Das Land in den Stammdaten, Liefer- und Rechnungsadressen, bei Ansprechpersonen,
+  Webshopbestellungen und in der Mandantenkonfig ist per Auswahlmenü aus einer
+  vordefinierten Liste wählbar, anstatt wie zuvor, ein Freitextfeld. Ein
+  interaktives Datenbankupgrade erfordert manuelle Auswahl bei Länderschreibweisen,
+  welche mit der bisherigen Zuordnung für ZUGFeRD Rechnungen inkompatibel sind,
+  und daher beim Upgrade nicht automatisch zugeordnet werden können.
+  Ländernamen für Berichte und Belegdruck lassen sich einstellen im Menü
+  System → Sprachen und Übersetzungen → Ländernamen. Die Reihenfolge der Länder
+  im Auswahlmenü auf Berichten und Belegen ist einstellbar, so dass bspw.
+  die am häufigsten verwendeten Länder zuoberst angezeigt werden können.
+
+- Überarbeitung des CSS-Layouts und der Titelzeilen. Dies verbessert die Anzeige
+  der Schnellsuchleisten, ermöglicht das Scrollen in Fällen in denen das
+  Top-Hauptmenü nicht auf dem Bildschirm passt und bietet eine bessere Grundlage
+  für zukünftige Weiterentwicklungen.
+
+- Ansprechpartner sind mehreren Kunden und/oder Lieferanten zuordenbar
+  Das Editieren von Ansprechpersonen erfolgt nun auf einer eigenen Seite
+  unabhängig von Kunden und Lieferanten. In der Kunden/Lieferanten-Maske lassen
+  sich bestehende Ansprechpersonen veknüpfen oder bereits verknüpfte entfernen.
+  Über den Workflow "Speichern und Ansprechperson erfassen" wird eine neu
+  gespeicherte Ansprechperson automatisch mit einem Kunden/Lieferanten
+  verknüpft.
+
 Kleinere neue Features und Detailverbesserungen:
+
+- Anordnung der Elemente in der Maske für Wiedervorlagen verbessert
+
+- Suche nach und Anzeige von Kundenartikelnummer und Kunde im Artikelbericht
+  analog zur Suche nach Lieferantenartikelnummer und Lieferant ermöglicht.
 
 - Im Bericht VK-Rechnungen/Debitorenbuchungen und
   EK-Rechnungen/Kreditorenbuchungen wird neben der Projektnummer des Belegs
@@ -65,6 +112,44 @@ Kleinere neue Features und Detailverbesserungen:
   ab welchen die Angebote/Aufträge für die Aufgabenliste als überfällig
   gelten.
 
+- CSV-Export für Aufträge aus der Auftragsmaske heraus.
+
+- PDF Dokumente im Beleg-Reiter Dokumente können beim Buchungsjournal durch
+  setzen des enstprechenden Häkchens beim Export mitexportiert werden. Die
+  etwas versteckte Möglichkeit dafür über eine zweite Aktion in der Action-Bar
+  entfällt.
+
+- Preishistorie in den Stammdaten um die Felder Lieferant und Rechnung
+  erweitert, falls die Preisaktualisierung über eine Einkaufsrechnung
+  passiert ist.
+
+- Bankkonten: Einstellung von DATEV Export ausnehmen hinzugefügt
+
+- Die Authentifizierung über Cookies mit API-Token für das alte CRM-Menü wurde
+  entfernt.
+
+- Das Bearbeiten von LaTeX/HTML Templates in der Oberfläche wurde aus
+  Sicherheitsgründen entfernt
+
+- Ein HTML formatiert Feld "Interne Bemerkungen" wurde zu Artikeln hinzugefügt
+  und das Feld "Bemerkungen" wurde umbenannt zu "Langtext".
+
+- Artikelstamm: standardmäßig wird geprüft, dass jede EAN eindeutig ist
+  und ihre Prüfziffer stimmt.  Dies lässt sich in der Mandantenkonfig unter
+  Nummernkreise abschalten.
+
+- freie Preise: In der Mandantenkonfiguration lässt sich einstellen, ob Preise
+  als freie Preise beim Hinzufügen von Positionen in Belegen übernommen werden
+  sollen. Damit kommen die Preise nach wie vor aus der Preisquelle, aber der
+  Preis ist frei editierbar.
+
+- Regulatorische Pflichtangaben (Geschäftsführung/Handelsregistereintrag/Sitz
+  der Gesellschaft) lassen sich in der Mandatenkonfiguration hinterlegen
+  und werden beim ZUGFeRD-Export mit ausgegeben.
+
+- Umsatzsteuer-Id und Steuernummer sind als weitere Felder bei zusätzlichen
+  Rechnungsadressen eingebbar. Diese stehen auch in den (verkaufsseitigen)
+  Druckvorlagen zur Verfügung.
 
 Bugfixes (Tracker: https://www.kivitendo.de/redmine/projects/forum/issues/):
 
@@ -130,6 +215,12 @@ Kleinere neue Features und Detailverbesserungen:
 - Beim Produzieren von Erzeugnissen darf man auch Erzeugnisbestandteile mit der
   Menge 0 verbauen. Konfigurierbar in der Mandantenkonfiguration, standardmäßig
   deaktiviert.
+
+- Es gibt ein neues Feld Einkäufer für Lieferanten, die im Lieferanten-Workflow
+  bei den Belegen gesetzt werden können.
+
+- Konfigurierbares Feature in der Mandatenkonfiguration:
+  Lieferantenrechnungen können erst nach Freigabe per SEPA überwiesen werden.
 
 Bugfixes (Tracker: https://www.kivitendo.de/redmine/projects/forum/issues/):
 755 CSV-Import für Auftrage: Fehler, wenn record_type fehlt

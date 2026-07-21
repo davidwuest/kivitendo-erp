@@ -142,6 +142,7 @@ SQL
                      ? ''
                      : qq| , o.amount, o.netamount, o.marge_total, o.marge_percent, (o.netamount * o.order_probability / 100) AS expected_netamount |;
 
+  my $country_description_key = SL::DB::Country->description_column_localized($::myconfig{countrycode});
   $query =
     qq|SELECT o.id, o.ordnumber, o.transdate, o.reqdate | .
     $amount_columns .
@@ -155,12 +156,13 @@ SQL
     qq|  department.description as department, | .
     qq|  ex.$rate AS daily_exchangerate, | .
     qq|  pt.description AS payment_terms, | .
+    qq|  dt.description AS delivery_terms, | .
     qq|  pr.projectnumber AS globalprojectnumber, | .
     qq|  e.name AS employee, s.name AS salesman, | .
-    qq|  ct.${vc}number AS vcnumber, ct.country, ct.ustid, ct.business_id,  | .
+    qq|  ct.${vc}number AS vcnumber, countries.$country_description_key AS country, ct.ustid, ct.business_id,  | .
     qq|  tz.description AS taxzone, | .
     qq|  shipto.shiptoname, shipto.shiptodepartment_1, shipto.shiptodepartment_2, | .
-    qq|  shipto.shiptostreet, shipto.shiptozipcode, shipto.shiptocity, shipto.shiptocountry, | .
+    qq|  shipto.shiptostreet, shipto.shiptozipcode, shipto.shiptocity, sc.$country_description_key AS shiptocountry, | .
     qq|  order_statuses.name AS order_status | .
     $periodic_invoices_columns .
     $phone_notes_columns .
@@ -175,13 +177,16 @@ SQL
     qq|  AND ex.transdate = o.transdate) | .
     qq|LEFT JOIN project pr ON (o.globalproject_id = pr.id) | .
     qq|LEFT JOIN payment_terms pt ON (pt.id = o.payment_id)| .
+    qq|LEFT JOIN delivery_terms dt ON (dt.id = o.delivery_term_id)| .
     qq|LEFT JOIN tax_zones tz ON (o.taxzone_id = tz.id) | .
+    qq|LEFT JOIN countries ON (ct.country_id = countries.id) | .
     qq|LEFT JOIN department   ON (o.department_id = department.id) | .
     qq|LEFT JOIN order_statuses ON (o.order_status_id = order_statuses.id) | .
     qq|LEFT JOIN shipto ON (
         (o.shipto_id = shipto.shipto_id) or
         (o.id = shipto.trans_id and shipto.module = 'OE')
        )| .
+    qq|LEFT JOIN countries sc ON (shipto.shiptocountry_id = sc.id)| .
     qq|$periodic_invoices_joins | .
     $phone_notes_join .
     qq|WHERE (o.record_type = ?) |;
@@ -313,6 +318,16 @@ SQL
   if ($form->{taxzone_id} ne '') { # taxzone_id could be 0
     $query .= qq| AND tz.id = ?|;
     push(@values, $form->{taxzone_id});
+  }
+
+  if ($form->{payment_term_id}) {
+    $query .= qq| AND o.payment_id = ?|;
+    push(@values, $form->{payment_term_id});
+  }
+
+  if ($form->{delivery_term_id}) {
+    $query .= qq| AND o.delivery_term_id = ?|;
+    push(@values, $form->{delivery_term_id});
   }
 
   if ($form->{transaction_description}) {
@@ -454,9 +469,9 @@ SQL
     $query .= " AND shipto.shiptocity ILIKE ?";
     push(@values, like($form->{shiptocity}));
   }
-  if ($form->{shiptocountry}) {
-    $query .= " AND shipto.shiptocountry ILIKE ?";
-    push(@values, like($form->{shiptocountry}));
+  if ($form->{shiptocountry_id}) {
+    $query .= " AND shipto.shiptocountry_id = ?";
+    push(@values, conv_i($form->{shiptocountry_id}));
   }
 
   if ($form->{all}) {
@@ -498,6 +513,7 @@ SQL
     "insertdate"              => "o.itime",
     "taxzone"                 => "tz.description",
     "payment_terms"           => "pt.description",
+    "delivery_terms"          => "dt.description",
     "department"              => "department.description",
     "intnotes"                => "o.intnotes",
     "order_status"            => "order_statuses.name",
@@ -1160,7 +1176,7 @@ sub order_details {
       $form->{nodiscount_total} += $nodiscount_linetotal;
       $form->{discount_total}   += $discount;
 
-      if ($subtotal_active) {
+      if ($subtotal_active || $subtotal_turn_off) {
         $discount_subtotal   += $linetotal;
         $nodiscount_subtotal += $nodiscount_linetotal;
       }

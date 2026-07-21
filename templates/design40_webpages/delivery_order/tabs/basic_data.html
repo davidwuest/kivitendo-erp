@@ -45,10 +45,10 @@
         </td>
       </tr>
 
-      <tr id='cp_row' [%- IF !SELF.order.${SELF.cv}.contacts.size %]style='display:none'[%- END %]>
+      <tr id='cp_row' [%- IF !SELF.cv_assigned_contacts.size %]style='display:none'[%- END %]>
         <th>[% 'Contact Person' | $T8 %]</th>
         <td>[% L.select_tag('order.cp_id',
-                            SELF.order.${SELF.cv}.contacts,
+                            SELF.cv_assigned_contacts,
                             default=SELF.order.cp_id,
                             title_key='full_name_dep',
                             value_key='cp_id',
@@ -203,11 +203,20 @@
         class="wi-normal",
         ) %]</td>
     </tr>
+    [% ELSE %]
+      <tr>
+        <th>[% 'Buyer' | $T8 %]</th>
+        <td>[% L.select_tag('order.buyer_id',
+          SELF.all_employees,
+          default=( SELF.order.buyer_id ? SELF.order.buyer_id : SELF.current_employee_id),
+          class='wi-normal',
+          title_key='safe_name') %]</td>
+      </tr>
     [% END %]
 
     <tr>
       <th>[% 'Delivery Order Number' | $T8 %]</th>
-      <td>[% L.input_tag('order.donumber', SELF.order.donumber, onchange='kivi.DeliveryOrder.set_number_in_title(this)', class='wi-normal numeric') %]</td>
+      <td>[% L.input_tag('order.donumber', SELF.order.donumber, class='wi-normal numeric') %]</td>
     </tr>
 
     <tr>
@@ -280,7 +289,7 @@
       </th>
       <th nowrap width="3">[%- 'position' | $T8 %] </th>
       <th style='text-align:center'><img src="image/updown.png" alt="[%- LxERP.t8('reorder item') %]"></th>
-      <th style='text-align:center'><img src="image/close.png" alt="[%- LxERP.t8('delete item') %]"></th>
+      <th style='text-align:center'><img src="image/close.png" alt="[%- LxERP.t8('delete item') %]" class="close"></th>
       [%- IF SELF.show_update_button -%]
       <th class="listheading" style='text-align:center' nowrap width="1">
         [%- L.img_tag(src="image/rotate_cw.svg",
@@ -320,6 +329,7 @@
 
 </div><!-- /#row_table_scroll_id /.wrapper -->
 
+[% L.hidden_tag('order.billing_address_id', SELF.order.billing_address_id) %]
 [% L.hidden_tag('order.currency_id', SELF.order.currency_id) %]
 [% L.hidden_tag('order.taxzone_id', SELF.order.taxzone_id) %]
 [% L.hidden_tag('order.taxincluded', SELF.order.taxincluded) %]

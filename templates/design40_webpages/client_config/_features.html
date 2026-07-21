@@ -231,7 +231,7 @@
         <td class="long-desc"> [% LxERP.t8('Include the transaction description in the preset email subject.') %] </td>
       </tr>
       <tr>
-        <th>[% LxERP.t8('Email of the invoice recipient') %]</th>
+        <th>[% LxERP.t8('Email of the invoicing party') %]</th>
         <td colspan="2">
           [% L.input_tag('defaults.invoice_mail', SELF.defaults.invoice_mail) %]
           <div class ="description">[% 'Used in Factur-X/ZUGFeRD & XRechnung invoice data for the seller party\'s contact information' | $T8 %]</div>
@@ -561,6 +561,13 @@
       <div>
         [% L.select_tag("defaults.disabled_price_sources[]", SELF.all_price_sources, id="defaults_price_sources", multiple=1, default=SELF.defaults.disabled_price_sources) %] [% L.multiselect2side("defaults_price_sources", labelsx=LxERP.t8("All price sources"), labeldx=LxERP.t8("Price sources deactivated in this client")) %]
       </div>
+      </td>
+    </tr>
+    <tr>
+      <td>[% 'Prices of new items are always free' | $T8 %]</td>
+      <td>[% L.yes_no_tag("defaults.prices_always_free", SELF.defaults.prices_always_free) %]</td>
+      <td class="long-desc">
+        [% 'When items are added to records, their price is always set to be free (an editable input field), no matter which price source applies to the item.' | $T8 %]
       </td>
     </tr>
     <tr>

@@ -3,7 +3,7 @@ package SL::Controller::CustomerVendor;
 use strict;
 use parent qw(SL::Controller::Base);
 
-use List::MoreUtils qw(any);
+use List::MoreUtils qw(any none);
 
 use SL::JSON;
 use SL::DBUtils;
@@ -21,8 +21,6 @@ use SL::DB::AuthGroup;
 use SL::DB::Customer;
 use SL::DB::Vendor;
 use SL::DB::Business;
-use SL::DB::ContactDepartment;
-use SL::DB::ContactTitle;
 use SL::DB::Employee;
 use SL::DB::Greeting;
 use SL::DB::Language;
@@ -31,7 +29,6 @@ use SL::DB::Note;
 use SL::DB::PaymentTerm;
 use SL::DB::Pricegroup;
 use SL::DB::Price;
-use SL::DB::Contact;
 use SL::DB::FollowUp;
 use SL::DB::FollowUpLink;
 use SL::DB::History;
@@ -60,7 +57,6 @@ __PACKAGE__->run_before(
     'save_and_quotation',
     'save_and_rfq',
     'delete',
-    'delete_contact',
     'delete_shipto',
     'delete_additional_billing_address',
   ]
@@ -74,7 +70,6 @@ __PACKAGE__->run_before(
     'update',
     'ajaj_get_shipto',
     'ajaj_get_additional_billing_address',
-    'ajaj_get_contact',
     'ajax_list_prices',
   ]
 );
@@ -91,7 +86,7 @@ __PACKAGE__->run_before(
 
 __PACKAGE__->run_before('normalize_name');
 
-my @ADDITIONAL_BILLING_ADDRESS_COLUMNS = qw(name department_1 department_2 contact street zipcode city country gln email phone fax default_address);
+my @ADDITIONAL_BILLING_ADDRESS_COLUMNS = qw(name department_1 department_2 contact street zipcode city country_id gln email dunning_mail phone fax taxnumber ustid default_address);
 
 sub action_add {
   my ($self) = @_;
@@ -101,6 +96,8 @@ sub action_add {
   if ($self->{cv}->is_customer) {
     $self->{cv}->assign_attributes(hourly_rate => $::instance_conf->get_customer_hourly_rate);
     $self->{cv}->salesman_id(SL::DB::Manager::Employee->current->id) if !$::auth->assert('customer_vendor_all_edit', 1);
+  } elsif ($self->{cv}->is_vendor) {
+    $self->{cv}->buyer_id(SL::DB::Manager::Employee->current->id) if !$::auth->assert('customer_vendor_all_edit', 1);
   }
 
   $self->render(
@@ -113,10 +110,13 @@ sub action_add {
 sub action_edit {
   my ($self) = @_;
 
+  my $title = $self->is_vendor() ? $::locale->text('Edit Vendor') : $::locale->text('Edit Customer');
+  $title .= ' - ' . $self->{cv}->displayable_name;
+
   $self->_pre_render();
   $self->render(
     'customer_vendor/form',
-    title => ($self->is_vendor() ? $::locale->text('Edit Vendor') : $::locale->text('Edit Customer')),
+    title => $title,
     %{$self->{template_args}}
   );
 }
@@ -213,16 +213,6 @@ sub _save {
     && $::instance_conf->get_vc_greetings_use_textfield
     && SL::DB::Manager::Greeting->get_all_count(where => [description => $self->{cv}->greeting]) == 0;
 
-  $self->{contact}->cp_title(trim($self->{contact}->cp_title));
-  my $save_contact_title      = $self->{contact}->cp_title
-    && $::instance_conf->get_contact_titles_use_textfield
-    && SL::DB::Manager::ContactTitle->get_all_count(where => [description => $self->{contact}->cp_title]) == 0;
-
-  $self->{contact}->cp_abteilung(trim($self->{contact}->cp_abteilung));
-  my $save_contact_department = $self->{contact}->cp_abteilung
-    && $::instance_conf->get_contact_departments_use_textfield
-    && SL::DB::Manager::ContactDepartment->get_all_count(where => [description => $self->{contact}->cp_abteilung]) == 0;
-
   # handle customer_vendor link
   if ($::form->{customer_vendor_link} eq 'none' && $self->{cv}->linked_customer_vendor) {
     $self->{cv}->linked_customer_vendor_rel([]);
@@ -274,13 +264,22 @@ sub _save {
 
     SL::DB::Greeting->new(description => $self->{cv}->greeting)->save if $save_greeting;
 
-    $self->{contact}->cp_cv_id($self->{cv}->id);
-    if( $self->{contact}->cp_name ne '' || $self->{contact}->cp_givenname ne '' ) {
-      SL::DB::ContactTitle     ->new(description => $self->{contact}->cp_title)    ->save if $save_contact_title;
-      SL::DB::ContactDepartment->new(description => $self->{contact}->cp_abteilung)->save if $save_contact_department;
+    # reconcile linked contacts
+    my $old_contacts = $self->{cv}->contacts;
+    my $new_contacts = $::form->{linked_contacts} ? SL::DB::Manager::Contact->get_all(query => [ cp_id => [ map { $_->{cp_id} } @{$::form->{linked_contacts}} ] ]) : [];
+    my %old_ids = map { $_->cp_id => 1 } @$old_contacts;
+    my %new_ids = map { $_->cp_id => 1 } @$new_contacts;
+    my %new_main_ids = map { $_->{cp_id} => 1 } grep { $_->{main} } @{$::form->{linked_contacts}};
 
-      $self->{contact}->save(cascade => 1);
-    }
+    $self->{cv}->link_contact($_)   for grep { !$old_ids{$_->cp_id} } @$new_contacts;
+    $self->{cv}->detach_contact($_) for grep { !$new_ids{$_->cp_id} } @$old_contacts;
+
+    my $class = $self->is_customer ? 'Customer' : 'Vendor';
+    my $db    = $self->is_customer ? 'customer' : 'vendor';
+    "SL::DB::Manager::${class}Contact"->update_all(
+      set   => { main => 0 },
+      where => [ main => 1, "${db}_id" => $self->{cv}->id ]);
+    $self->{cv}->link_contact($_, main => 1) for grep { $new_main_ids{$_->cp_id} } @$new_contacts;
 
     if( $self->{note}->subject ne '' && $self->{note}->body ne '' ) {
 
@@ -362,10 +361,6 @@ sub action_save {
     id     => $self->{cv}->id,
     db     => ($self->is_vendor() ? 'vendor' : 'customer'),
   );
-
-  if ( $self->{contact}->cp_id ) {
-    push(@redirect_params, contact_id => $self->{contact}->cp_id);
-  }
 
   if ( $self->{shipto}->shipto_id ) {
     push(@redirect_params, shipto_id => $self->{shipto}->shipto_id);
@@ -503,35 +498,6 @@ sub action_delete {
     $::form->redirect($msg);
   }
 
-}
-
-
-sub action_delete_contact {
-  my ($self) = @_;
-
-  my $db = $self->{contact}->db;
-
-  if ( !$self->{contact}->cp_id ) {
-    SL::Helper::Flash::flash('error', $::locale->text('No contact selected to delete'));
-  } else {
-
-    $db->with_transaction(sub {
-      if ( $self->{contact}->used ) {
-        $self->{contact}->detach();
-        $self->{contact}->save();
-        SL::Helper::Flash::flash('info', $::locale->text('Contact is in use and was flagged invalid.'));
-      } else {
-        $self->{contact}->delete(cascade => 1);
-        SL::Helper::Flash::flash('info', $::locale->text('Contact deleted.'));
-      }
-
-      1;
-    }) || die($db->error);
-
-    $self->{contact} = $self->_new_contact_object;
-  }
-
-  $self->action_edit();
 }
 
 sub action_delete_shipto {
@@ -704,7 +670,7 @@ sub action_ajaj_get_shipto {
         my $name = 'shipto'. $_;
         $name => $self->{shipto}->$name;
       }
-      qw(_id name department_1 department_2 street zipcode city gln country contact phone fax email)
+      qw(_id name department_1 department_2 street zipcode city gln country_id contact phone fax email)
     )
   };
 
@@ -721,38 +687,6 @@ sub action_ajaj_get_additional_billing_address {
       map { ($_ => $self->{additional_billing_address}->$_) } ('id', @ADDITIONAL_BILLING_ADDRESS_COLUMNS)
     },
   };
-
-  $self->render(\SL::JSON::to_json($data), { type => 'json', process => 0 });
-}
-
-sub action_ajaj_get_contact {
-  my ($self) = @_;
-
-  my $data;
-
-  $data->{contact} = {
-    map(
-      {
-        my $name = 'cp_'. $_;
-
-        if ( $_ eq 'birthday' && $self->{contact}->$name ) {
-          $name => $self->{contact}->$name->to_lxoffice;
-        } else {
-          $name => $self->{contact}->$name;
-        }
-      }
-      qw(
-        id gender abteilung title position givenname name email phone1 phone2 fax mobile1 mobile2
-        satphone satfax project street zipcode city privatphone privatemail birthday main
-      )
-    )
-  };
-
-  $data->{contact_cvars} = $self->_prepare_cvar_configs_for_ajaj($self->{contact}->cvars_by_config);
-
-  # avoid two or more main_cp
-  my $has_main_cp = grep { $_->cp_main == 1 } @{ $self->{cv}->contacts };
-  $data->{contact}->{disable_cp_main} = 1 if ($has_main_cp && !$data->{contact}->{cp_main});
 
   $self->render(\SL::JSON::to_json($data), { type => 'json', process => 0 });
 }
@@ -813,7 +747,7 @@ sub action_ajaj_autocomplete {
 }
 
 sub action_test_page {
-  $_[0]->render('customer_vendor/test_page');
+  $_[0]->render('customer_vendor/test_page', title => 'Customer Vendor Autocomplete Testpage');
 }
 
 sub action_ajax_list_prices {
@@ -893,6 +827,7 @@ sub action_show_customer_vendor_details_dialog {
   $details{delivery_terms}      = $cv->delivery_term->description if $cv->delivery_term;
   $details{payment_terms}       = $cv->payment->description       if $cv->payment;
   $details{pricegroup}          = $cv->pricegroup->pricegroup     if $is_customer && $cv->pricegroup;
+  $details{country}             = $cv->country->description_localized($::myconfig{countrycode});
 
   if ($is_customer) {
     foreach my $entry (@{ $cv->additional_billing_addresses }) {
@@ -1050,15 +985,7 @@ sub _instantiate_args {
     $self->{additional_billing_address}->assign_attributes(%{ $::form->{additional_billing_address} });
   }
 
-  if ( $::form->{contact}->{cp_id} ) {
-    $self->{contact} = SL::DB::Contact->new(cp_id => $::form->{contact}->{cp_id})->load();
-  } else {
-    $self->{contact} = $self->_new_contact_object;
-  }
-  $self->{contact}->assign_attributes(%{$::form->{contact}});
-
   $self->_copy_form_to_cvars(target => $self->{cv},      source => $::form->{cv_cvars});
-  $self->_copy_form_to_cvars(target => $self->{contact}, source => $::form->{contact_cvars});
   $self->_copy_form_to_cvars(target => $self->{shipto},  source => $::form->{shipto_cvars});
 }
 
@@ -1100,16 +1027,6 @@ sub _load_customer_vendor {
       $self->{additional_billing_address} = SL::DB::AdditionalBillingAddress->new;
     }
   }
-
-  if ( $::form->{contact_id} ) {
-    $self->{contact} = SL::DB::Contact->new(cp_id => $::form->{contact_id})->load();
-
-    if ( $self->{contact}->cp_cv_id != $self->{cv}->id ) {
-      die($::locale->text('Error'));
-    }
-  } else {
-    $self->{contact} = $self->_new_contact_object;
-  }
 }
 
 sub _may_access_action {
@@ -1143,6 +1060,7 @@ sub _create_customer_vendor {
 
   $self->{cv} = $self->_new_customer_vendor_object;
   $self->{cv}->currency_id($::instance_conf->get_currency_id());
+  $self->{cv}->country_id($::instance_conf->get_address_country_id);
 
   $self->{note} = SL::DB::Note->new();
 
@@ -1171,19 +1089,7 @@ sub _pre_render {
     unshift @{$self->{all_greetings}}, (SL::DB::Greeting->new(description => $self->{cv}->greeting));
   }
 
-  $self->{all_contact_titles} = SL::DB::Manager::ContactTitle->get_all_sorted();
-  foreach my $contact (@{ $self->{cv}->contacts }) {
-    if ($contact->cp_title && !grep {$contact->cp_title eq $_->description} @{$self->{all_contact_titles}}) {
-      unshift @{$self->{all_contact_titles}}, (SL::DB::ContactTitle->new(description => $contact->cp_title));
-    }
-  }
 
-  $self->{all_contact_departments} = SL::DB::Manager::ContactDepartment->get_all_sorted();
-  foreach my $contact (@{ $self->{cv}->contacts }) {
-    if ($contact->cp_abteilung && !grep {$contact->cp_abteilung eq $_->description} @{$self->{all_contact_departments}}) {
-      unshift @{$self->{all_contact_departments}}, (SL::DB::ContactDepartment->new(description => $contact->cp_abteilung));
-    }
-  }
 
   $self->{all_currencies} = SL::DB::Manager::Currency->get_all();
 
@@ -1192,6 +1098,7 @@ sub _pre_render {
   $self->{all_taxzones} = SL::DB::Manager::TaxZone->get_all_sorted();
 
   $self->{all_salesmen} = SL::DB::Manager::Employee->get_all(query => [ or => [ id => $self->{cv}->salesman_id,  deleted => 0 ] ]);
+  $self->{all_buyer}    = SL::DB::Manager::Employee->get_all(query => [ or => [ id => $self->{cv}->buyer_id,  deleted => 0 ] ]) if ($self->is_vendor);
 
   $self->{all_payment_terms} = SL::DB::Manager::PaymentTerm->get_all_sorted(where => [ or => [ id       => $self->{cv}->payment_id,
                                                                                                obsolete => 0 ] ]);
@@ -1202,8 +1109,8 @@ sub _pre_render {
     $self->{all_pricegroups} = SL::DB::Manager::Pricegroup->get_all_sorted(query => [ or => [ id => $self->{cv}->pricegroup_id, obsolete => 0 ] ]);
   }
 
-  $self->{contacts} = $self->{cv}->contacts;
-  $self->{contacts} ||= [];
+
+  $self->{all_contacts} = SL::DB::Manager::Contact->get_all;
 
   $self->{shiptos} = $self->{cv}->shipto;
   $self->{shiptos} ||= [];
@@ -1337,6 +1244,12 @@ sub _setup_form_action_bar {
           checks => [ 'check_taxzone_and_ustid' ],
           disabled => $no_rights,
         ]) x !$self->is_vendor,
+        action => [
+          t8('Save and create new Contact'),
+          submit => [ '#form', { action => "Contact/edit", link_with_cv_id => $self->{cv}->id, link_with_cv_db => $::form->{db} } ],
+          checks => [ 'check_taxzone_and_ustid' ],
+          disabled => !$self->{cv}->id? t8('This object has not been saved yet.') : $no_rights,
+        ],
       ], # end of combobox "Workflow"
 
       action => [
@@ -1459,7 +1372,6 @@ sub _new_customer_vendor_object {
 
   my $class  = 'SL::DB::' . ($self->is_vendor ? 'Vendor' : 'Customer');
   my $object = $class->new(
-    contacts         => [],
     shipto           => [],
     custom_variables => [],
   );

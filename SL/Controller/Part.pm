@@ -3,6 +3,7 @@ package SL::Controller::Part;
 use strict;
 use parent qw(SL::Controller::Base);
 
+use Algorithm::CheckDigits;
 use Carp;
 use Clone qw(clone);
 use Data::Dumper;
@@ -129,6 +130,22 @@ sub action_save {
        && SL::DB::Manager::Part->find_by(partnumber => $::form->{part}{partnumber})
      ) {
     return $self->js->error(t8('The partnumber is already being used'))->render;
+  }
+
+  if ($::instance_conf->get_parts_check_ean && $::form->{part}{ean}) {
+    my $v_ean = Algorithm::CheckDigits::CheckDigits('ean');
+    return $self->js->error(t8('EAN code check digit mismatch. #1 does not seem to be a valid EAN',
+                               $::form->{part}{ean}
+                           ))->render unless $v_ean->is_valid($::form->{part}{ean});
+
+    my @duplicates = @{ SL::DB::Manager::Part->get_all(where => [ ean => $::form->{part}{ean}, obsolete => 0 ]) };
+    @duplicates    = grep { $_->id != $self->part->id } @duplicates if $self->part->id;
+
+    if (@duplicates) {
+      return $self->js->error(t8('The EAN-code is already being used in other parts: #1',
+                                 join(', ', map { $_->presenter->part . ' ' . $_->description } @duplicates))
+                             )->render;
+    }
   }
 
   $self->parse_form;
@@ -325,7 +342,7 @@ sub render_form {
 
   $self->render(
     'part/form',
-    title             => $title_hash{$self->part->part_type},
+    title             => $title_hash{$self->part->part_type} . ': ' . $self->part->displayable_name,
     %assortment_vars,
     %assembly_vars,
     translations_map  => { map { ($_->language_id   => $_) } @{$self->part->translations} },
@@ -365,12 +382,16 @@ sub action_update_item_totals {
   my $lastcost_sum     = $self->recalc_item_totals(part_type => $part_type, price_type => 'lastcost');
   my $items_weight_sum = $self->recalc_item_totals(part_type => $part_type, price_type => 'weight');
 
-  my $sum_diff      = $sellprice_sum-$lastcost_sum;
+  my $sum_diff         = $sellprice_sum-$lastcost_sum;
+  my $sum_diff_percent = $sellprice_sum != 0
+                       ? (100 - $lastcost_sum / $sellprice_sum * 100)
+                       : undef;
 
   $self->js
     ->html('#items_sellprice_sum',       $::form->format_amount(\%::myconfig, $sellprice_sum, 2, 0))
     ->html('#items_lastcost_sum',        $::form->format_amount(\%::myconfig, $lastcost_sum,  2, 0))
     ->html('#items_sum_diff',            $::form->format_amount(\%::myconfig, $sum_diff,      2, 0))
+    ->html('#items_sum_diff_percent',    defined $sum_diff_percent ? $::form->format_amount(\%::myconfig, $sum_diff_percent, 2, 0) : '')
     ->html('#items_sellprice_sum_basic', $::form->format_amount(\%::myconfig, $sellprice_sum, 2, 0))
     ->html('#items_lastcost_sum_basic',  $::form->format_amount(\%::myconfig, $lastcost_sum,  2, 0))
     ->html('#items_weight_sum_basic'   , $::form->format_amount(\%::myconfig, $items_weight_sum))
@@ -481,6 +502,10 @@ sub action_add_assembly_item {
   my $items_sum_diff      = $items_sellprice_sum - $items_lastcost_sum;
   my $items_weight_sum    = $part->items_weight_sum;
 
+  my $items_sum_diff_percent = $items_sellprice_sum != 0
+                             ? (100 - $items_lastcost_sum / $items_sellprice_sum * 100)
+                             : undef;
+
   $self->js
     ->append('#assembly_rows', $html)  # append in tbody
     ->val('.add_assembly_item_input' , '')
@@ -488,6 +513,7 @@ sub action_add_assembly_item {
     ->html('#items_sellprice_sum', $::form->format_amount(\%::myconfig, $items_sellprice_sum, 2, 0))
     ->html('#items_lastcost_sum' , $::form->format_amount(\%::myconfig, $items_lastcost_sum , 2, 0))
     ->html('#items_sum_diff',      $::form->format_amount(\%::myconfig, $items_sum_diff     , 2, 0))
+    ->html('#items_sum_diff_percent',    defined $items_sum_diff_percent ? $::form->format_amount(\%::myconfig, $items_sum_diff_percent, 2, 0) : '')
     ->html('#items_sellprice_sum_basic', $::form->format_amount(\%::myconfig, $items_sellprice_sum, 2, 0))
     ->html('#items_lastcost_sum_basic' , $::form->format_amount(\%::myconfig, $items_lastcost_sum , 2, 0))
     ->html('#items_weight_sum_basic'   , $::form->format_amount(\%::myconfig, $items_weight_sum))
@@ -739,7 +765,7 @@ sub action_ajax_autocomplete {
 }
 
 sub action_test_page {
-  $_[0]->render('part/test_page', pre_filled_part => SL::DB::Manager::Part->get_first);
+  $_[0]->render('part/test_page', pre_filled_part => SL::DB::Manager::Part->get_first, title => 'Part Picker Testpage');
 }
 
 sub action_part_picker_search {

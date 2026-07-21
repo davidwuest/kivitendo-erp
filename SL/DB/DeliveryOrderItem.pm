@@ -38,6 +38,32 @@ __PACKAGE__->meta->initialize;
 
 __PACKAGE__->configure_acts_as_list(group_by => [qw(delivery_order_id)]);
 
+__PACKAGE__->before_save('_before_save_set_base_qty');
+
+
+# hooks
+
+sub _before_save_set_base_qty {
+  my ($self) = @_;
+
+  my $part          = $self->part;
+  my $part_unit_obj = $part ? $part->unit_obj : undef;
+  my $unit_obj      = $self->unit_obj;
+
+  croak("Cannot save delivery order item without a valid part")
+    unless $part;
+
+  croak("Cannot save delivery order item without a valid unit")
+    unless $unit_obj;
+
+  croak("Cannot save delivery order item without a valid part base unit")
+    unless $part_unit_obj;
+
+  $self->base_qty($unit_obj->convert_to($self->qty, $part_unit_obj));
+
+  return 1;
+}
+
 # methods
 
 sub new_from {

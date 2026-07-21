@@ -35,7 +35,7 @@ sub action_look_up {
 sub find_contact_for_number {
   my ($self, $number) = @_;
 
-  my @number_fields = qw(cp_phone1 cp_phone2 cp_mobile1 cp_mobile2 cp_fax);
+  my @number_fields = qw(cp_phone1 cp_phone2 cp_mobile1 cp_mobile2 cp_fax cp_privatphone);
 
   my $contacts = SL::DB::Manager::Contact->get_all(
     inject_results => 1,
@@ -55,20 +55,24 @@ sub find_contact_for_number {
 
   return if !@hits;
 
-  my @cv_ids = grep { $_ } map { $_->cp_cv_id } @hits;
+  my $c_contacts = SL::DB::Manager::CustomerContact->get_all(
+    inject_results => 1,
+    where          => [ contact_id => [ map { $_->cp_id } @hits ] ],
+  );
+  my $v_contacts = SL::DB::Manager::VendorContact->get_all(
+    inject_results => 1,
+    where          => [ contact_id => [ map { $_->cp_id } @hits ] ],
+  );
 
-  my %customers_vendors =
-    map { ($_->id => $_) } (
-      @{ SL::DB::Manager::Customer->get_all(where => [ id => \@cv_ids ], inject_results => 1) },
-      @{ SL::DB::Manager::Vendor  ->get_all(where => [ id => \@cv_ids ], inject_results => 1) },
-    );
+  my %customer_vendors = map { $_->id => $_ }
+    @{ SL::DB::Manager::Customer->get_all(where => [ id => [ map { $_->customer_id } @$c_contacts ], obsolete => 0 ], inject_results => 1) },
+    @{ SL::DB::Manager::Vendor  ->get_all(where => [ id => [ map { $_->vendor_id   } @$v_contacts ], obsolete => 0 ], inject_results => 1) };
 
-  my $chosen = first {
-       $_->cp_cv_id
-    &&  $customers_vendors{$_->cp_cv_id}
-    && !$customers_vendors{$_->cp_cv_id}->obsolete
-    && ($_->cp_name !~ m{ungültig}i)
-  } @hits;
+  my %cv_by_contacts;
+  $cv_by_contacts{$_->contact_id}++ for grep { $customer_vendors{ $_->customer_id } } @$c_contacts;
+  $cv_by_contacts{$_->contact_id}++ for grep { $customer_vendors{ $_->vendor_id   } } @$v_contacts;
+
+  my $chosen = first { $cv_by_contacts{$_->cp_id} && ($_->cp_name !~ m{ungültig}i) } @hits;
 
   $chosen //= $hits[0];
 
@@ -166,10 +170,10 @@ C<49> (Germany) respectively.
 
 Next the function will look up a contact whose normalized numbers
 equals the requested number. The fields C<phone1>, C<phone2>,
-C<mobile1>, C<mobile2> and C<fax> are considered. Active contacts are
-given preference over inactive ones (inactive meaning that they don't
-belong to a customer/vendor anymore or that the customer/vendor itself
-is flagged as obsolete).
+C<mobile1>, C<mobile2>, C<fax> and C<privatphone> are considered.
+Active contacts are given preference over inactive ones (inactive
+meaning that they don't belong to a customer/vendor anymore or that the
+customer/vendor itself is flagged as obsolete).
 
 If no contact is found, customers & vendors are searched. Their fields
 C<phone> and C<fax> are considered. The first customer/vendor who

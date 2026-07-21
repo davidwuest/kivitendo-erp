@@ -24,6 +24,7 @@ use SL::DB::Helper::DisplayableNamePreferences (
   options => [ {name => 'partnumber',  title => t8('Part Number')     },
                {name => 'description', title => t8('Description')    },
                {name => 'notes',       title => t8('Notes')},
+               {name => 'onhand',      title => t8('Onhand'),     sub => sub { $_[0]->onhand_as_number } },
                {name => 'partsgroup',  title => t8('Partsgroup'), sub => sub { $_[0]->partsgroup && $_[0]->partsgroup->partsgroup } },
                {name => 'ean',         title => t8('EAN')            }, ],
 );
@@ -91,6 +92,11 @@ __PACKAGE__->meta->add_relationships(
   purchase_basket_item => {
     type         => 'one to one',
     class        => 'SL::DB::PurchaseBasketItem',
+    column_map   => { id => 'part_id' },
+  },
+  price_histories  => {
+    type         => 'one to many',
+    class        => 'SL::DB::PartsPriceHistory',
     column_map   => { id => 'part_id' },
   },
 );

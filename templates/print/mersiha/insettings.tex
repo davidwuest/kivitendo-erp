@@ -4,6 +4,7 @@
 % Sprachüberprüfung
 \RequirePackage[english, ngerman]{babel}
 \RequirePackage{xparse}
+\RequirePackage[hidelinks]{hyperref}
 
 \makeatletter
 \ExplSyntaxOn
@@ -118,7 +119,7 @@
       \strasse               & \homepage           & \textBank             & \bank \\
       \ort                   & \textUstid\ \ustid  & \textIban             & \iban \\
       \textTelefon~\telefon  & \finanzamt          & \textBic              & \bic \\
-      \Ifstr{\fax}{}{}{\textFax~\fax} &        &\textBankleitzahl       & \bankleitzahl
+      \Ifstr{\fax}{}{}{\textFaxNr~\fax} &          &\textBankleitzahl       & \bankleitzahl
     \end{tabular*}
     % Ende des Fußzeileninhaltes.
   \end{lrbox}

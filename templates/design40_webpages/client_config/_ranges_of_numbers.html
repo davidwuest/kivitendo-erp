@@ -19,6 +19,10 @@
       <td>[% L.input_tag("defaults.vendornumber", SELF.defaults.vendornumber, size="15", class="wi-normal") %]</td>
     </tr>
     <tr>
+      <th>[% LxERP.t8('Contacts') %]</th>
+      <td>[% L.input_tag("defaults.contactnumber", SELF.defaults.contactnumber, size="15", class="wi-normal") %]</td>
+    </tr>
+    <tr>
       <th></th>
       <td></td>
     </tr>
@@ -101,6 +105,17 @@
     <tr>
       <th>[% LxERP.t8('Assortment') %]</th>
       <td>[% L.input_tag("defaults.assortmentnumber", SELF.defaults.assortmentnumber, size="15", class="wi-normal") %]</td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="tbl-horizontal">
+  <caption>[% 'Article' | $T8 %]</caption>
+  <colgroup> <col class="wi-small"><col class="wi-normal"> </colgroup>
+  <tbody>
+    <tr>
+      <th>[% LxERP.t8('Check EAN codes') %]</th>
+      <td>[% L.yes_no_tag("defaults.parts_check_ean", SELF.defaults.parts_check_ean, class="wi-normal") %]</td>
     </tr>
   </tbody>
 </table>

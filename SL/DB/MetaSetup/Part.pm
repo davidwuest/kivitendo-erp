@@ -21,6 +21,7 @@ __PACKAGE__->meta->columns(
   has_sernumber      => { type => 'boolean', default => 'false' },
   id                 => { type => 'integer', not_null => 1, sequence => 'id' },
   image              => { type => 'text' },
+  intnotes           => { type => 'text' },
   itime              => { type => 'timestamp', default => 'now()' },
   lastcost           => { type => 'numeric', precision => 15, scale => 5 },
   listprice          => { type => 'numeric', precision => 15, scale => 5 },
@@ -99,4 +100,4 @@ __PACKAGE__->meta->foreign_keys(
 );
 
 1;
-;
+

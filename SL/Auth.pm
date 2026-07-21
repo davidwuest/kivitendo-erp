@@ -2,6 +2,7 @@ package SL::Auth;
 
 use DBI;
 
+use Crypt::PRNG;
 use Digest::MD5 qw(md5_hex);
 use IO::File;
 use Time::HiRes qw(gettimeofday);
@@ -29,7 +30,7 @@ use constant SESSION_KEY_ROOT_AUTH => 'session_auth_status_root';
 use constant SESSION_KEY_USER_AUTH => 'session_auth_status_user';
 
 use Rose::Object::MakeMethods::Generic (
-  scalar => [ qw(client) ],
+  scalar => [ qw(client session_id) ],
 );
 
 
@@ -591,13 +592,12 @@ sub delete_user {
 
 # --------------------------------------
 
-my $session_id;
-
 sub restore_session {
   my $self = shift;
 
-  $session_id        =  $::request->{cgi}->cookie($self->get_session_cookie_name());
+  my $session_id     =  $::request->{cgi}->cookie($self->get_session_cookie_name());
   $session_id        =~ s|[^0-9a-f]||g if $session_id;
+  $self->session_id($session_id);
 
   $self->{SESSION}   = { };
 
@@ -618,7 +618,7 @@ sub restore_session {
   # admin is creating the session tables at the moment.
   $query  = qq|SELECT *, (mtime < (now() - '$self->{session_timeout}m'::interval)) AS is_expired FROM auth.session WHERE id = ?|;
 
-  if (!($sth = $dbh->prepare($query)) || !$sth->execute($session_id)) {
+  if (!($sth = $dbh->prepare($query)) || !$sth->execute($self->session_id)) {
     $sth->finish if $sth;
     return $self->session_restore_result(SESSION_NONE());
   }
@@ -629,20 +629,16 @@ sub restore_session {
   # The session ID provided is valid in the following cases:
   #  1. session ID exists in the database
   #  2. hasn't expired yet
-  #  3. if cookie for the API token is given: the cookie's value equal database column 'auth.session.api_token' for the session ID
-  $self->{api_token}   = $cookie->{api_token} if $cookie;
-  my $api_token_cookie = $self->get_api_token_cookie;
   my $cookie_is_bad    = !$cookie || $cookie->{is_expired};
-  $cookie_is_bad     ||= $api_token_cookie && ($api_token_cookie ne $cookie->{api_token}) if  $api_token_cookie;
   if ($cookie_is_bad) {
     $self->destroy_session();
     return $self->session_restore_result($cookie ? SESSION_EXPIRED() : SESSION_NONE());
   }
 
   if ($self->{column_information}->has('auto_restore')) {
-    $self->_load_with_auto_restore_column($dbh, $session_id);
+    $self->_load_with_auto_restore_column($dbh, $self->session_id);
   } else {
-    $self->_load_without_auto_restore_column($dbh, $session_id);
+    $self->_load_without_auto_restore_column($dbh, $self->session_id);
   }
 
   return $self->session_restore_result(SESSION_OK());
@@ -718,19 +714,19 @@ SQL
 sub destroy_session {
   my $self = shift;
 
-  if ($session_id) {
+  if ($self->session_id) {
     my $dbh = $self->dbconnect();
 
     $dbh->begin_work;
 
-    do_query($main::form, $dbh, qq|DELETE FROM auth.session_content WHERE session_id = ?|, $session_id);
-    do_query($main::form, $dbh, qq|DELETE FROM auth.session WHERE id = ?|, $session_id);
+    do_query($main::form, $dbh, qq|DELETE FROM auth.session_content WHERE session_id = ?|, $self->session_id);
+    do_query($main::form, $dbh, qq|DELETE FROM auth.session WHERE id = ?|, $self->session_id);
 
     $dbh->commit();
 
-    SL::SessionFile->destroy_session($session_id);
+    SL::SessionFile->destroy_session($self->session_id);
 
-    $session_id      = undef;
+    $self->session_id(undef);
     $self->{SESSION} = { };
   }
 }
@@ -777,16 +773,15 @@ sub expire_sessions {
 }
 
 sub _create_session_id {
-  my @data;
-  map { push @data, int(rand() * 255); } (1..32);
-
-  my $id = md5_hex(pack 'C*', @data);
-
-  return $id;
+  return Crypt::PRNG::random_bytes_hex(16);
 }
 
 sub create_or_refresh_session {
-  $session_id ||= shift->_create_session_id;
+  my ($self) = @_;
+
+  $self->session_id($self->_create_session_id) unless $self->session_id;
+
+  return $self->session_id;
 }
 
 sub save_session {
@@ -795,7 +790,7 @@ sub save_session {
 
   my $dbh          = $provided_dbh || $self->dbconnect(1);
 
-  return unless $dbh && $session_id;
+  return unless $dbh && $self->session_id;
 
   $dbh->begin_work unless $provided_dbh;
 
@@ -806,24 +801,19 @@ sub save_session {
     return;
   }
 
-  my ($id) = selectrow_query($::form, $dbh, qq|SELECT id FROM auth.session WHERE id = ?|, $session_id);
+  my ($id) = selectrow_query($::form, $dbh, qq|SELECT id FROM auth.session WHERE id = ?|, $self->session_id);
 
   if ($id) {
-    do_query($::form, $dbh, qq|UPDATE auth.session SET mtime = now() WHERE id = ?|, $session_id);
+    do_query($::form, $dbh, qq|UPDATE auth.session SET mtime = now() WHERE id = ?|, $self->session_id);
   } else {
-    do_query($::form, $dbh, qq|INSERT INTO auth.session (id, ip_address, mtime) VALUES (?, ?, now())|, $session_id, $ENV{REMOTE_ADDR});
-  }
-
-  if ($self->{column_information}->has('api_token', 'session')) {
-    my ($stored_api_token) = $dbh->selectrow_array(qq|SELECT api_token FROM auth.session WHERE id = ?|, undef, $session_id);
-    do_query($::form, $dbh, qq|UPDATE auth.session SET api_token = ? WHERE id = ?|, $self->_create_session_id, $session_id) unless $stored_api_token;
+    do_query($::form, $dbh, qq|INSERT INTO auth.session (id, ip_address, mtime) VALUES (?, ?, now())|, $self->session_id, $ENV{REMOTE_ADDR});
   }
 
   my @values_to_save = grep    { $_->{modified} }
                        values %{ $self->{SESSION} };
   if (@values_to_save) {
     my %known_keys = map { $_ => 1 }
-      selectall_ids($::form, $dbh, qq|SELECT sess_key FROM auth.session_content WHERE session_id = ?|, 'sess_key', $session_id);
+      selectall_ids($::form, $dbh, qq|SELECT sess_key FROM auth.session_content WHERE session_id = ?|, 'sess_key', $self->session_id);
     my $auto_restore             = $self->{column_information}->has('auto_restore');
 
     my $insert_query  = $auto_restore
@@ -842,11 +832,11 @@ sub save_session {
 
       if ($known_keys{$value->{key}}) {
         do_statement($::form, $update_sth, $update_query,
-          $value->get_dumped, ( $value->{auto_restore} )x!!$auto_restore, $session_id, $value->{key}
+          $value->get_dumped, ( $value->{auto_restore} )x!!$auto_restore, $self->session_id, $value->{key}
         );
       } else {
         do_statement($::form, $insert_sth, $insert_query,
-          $session_id, $value->{key}, $value->get_dumped, ( $value->{auto_restore} )x!!$auto_restore
+          $self->session_id, $value->{key}, $value->get_dumped, ( $value->{auto_restore} )x!!$auto_restore
         );
       }
     }
@@ -953,33 +943,21 @@ sub restore_form_from_session {
 
 sub set_cookie_environment_variable {
   my $self = shift;
-  $ENV{HTTP_COOKIE} = $self->get_session_cookie_name() . "=${session_id}";
+  $ENV{HTTP_COOKIE} = $self->get_session_cookie_name() . "=" . $self->session_id;
 }
 
 sub get_session_cookie_name {
-  my ($self, %params) = @_;
+  my ($self) = @_;
 
-  $params{type}     ||= 'id';
-  my $name            = $self->{cookie_name} || 'lx_office_erp_session_id';
-  $name              .= '_api_token' if $params{type} eq 'api_token';
+  my $name = $self->{cookie_name} || 'lx_office_erp_session_id';
 
   return $name;
 }
 
 sub get_session_id {
-  return $session_id;
-}
-
-sub get_api_token_cookie {
   my ($self) = @_;
 
-  $::request->{cgi}->cookie($self->get_session_cookie_name(type => 'api_token'));
-}
-
-sub is_api_token_cookie_valid {
-  my ($self)             = @_;
-  my $provided_api_token = $self->get_api_token_cookie;
-  return $self->{api_token} && $provided_api_token && ($self->{api_token} eq $provided_api_token);
+  return $self->session_id;
 }
 
 sub _tables_present {

@@ -33,6 +33,7 @@ use strict;
 use SL::DBUtils;
 use SL::DATEV::CSV;
 use SL::DB;
+use SL::DB::Manager::BankAccount;
 use Encode qw(encode);
 use SL::HTML::Util ();
 use SL::Iconv;
@@ -543,6 +544,17 @@ sub generate_datev_data {
     $gl_imported = " AND NOT imported";
   }
 
+  my $exempt_datev_skonto_filter =
+    qq| AND NOT EXISTS (SELECT
+          FROM bank_transaction_acc_trans btacc
+          JOIN acc_trans         acc ON btacc.acc_trans_id = acc.acc_trans_id
+          JOIN bank_transactions bt  ON btacc.bank_transaction_id = bt.id
+          JOIN bank_accounts     ba  ON bt.local_bank_account_id = ba.id AND ba.exempt_from_datev_export IS true
+          WHERE btacc.automatic IS true
+            AND btacc.type = 'skonto_charts_and_tax_correction'
+            AND btacc.gl_id = gl.id
+        )|;
+
   my $query    =
     qq|SELECT ac.acc_trans_id, ac.transdate, ac.gldate, ac.trans_id,ar.id, ac.amount, ac.taxkey, ac.memo,
          ar.invnumber, ar.duedate, ar.amount as umsatz, COALESCE(ar.tax_point, ar.deliverydate) AS deliverydate, ar.itime::date,
@@ -627,6 +639,7 @@ sub generate_datev_data {
          $gl_department_id_filter
          $gl_imported
          AND NOT EXISTS (SELECT gl_id from ap_gl where gl_id = gl.id)
+         $exempt_datev_skonto_filter
          $filter
 
        ORDER BY trans_id, acc_trans_id|;
@@ -808,10 +821,17 @@ sub generate_datev_data {
           $absumsatz               += -1 * $new_trans{'amount'};
 
         } else {
-          my $unrounded             = $trans->[$j]->{'amount'} * (1 + $tax_rate) * -1 + $rounding_error;
-          my $rounded               = $form->round_amount($unrounded, 2);
+          # emulate PTC rounding behaviour: first round taxes in isolation, then add up and round the entire sum
+          # makes a difference in the very rare case where tax ends on .0044444449 and tax + netamount ends on 0.00500001
+          # see "rounding error test" in t/datev/invoices.t
+          my $unrounded_tax         = $trans->[$j]->{'amount'} * ($tax_rate) * -1 + $rounding_error;
+          my $rounded_tax           = $form->round_amount($unrounded_tax, 2);
+          $rounding_error           = $unrounded_tax - $rounded_tax;
 
+          my $unrounded             = $trans->[$j]->{'amount'} * -1 + $rounding_error + $rounded_tax;
+          my $rounded               = $form->round_amount($unrounded, 2);
           $rounding_error           = $unrounded - $rounded;
+
           $new_trans{'amount'}      = $rounded;
           $new_trans{'umsatz'}      = abs($rounded) * $ml;
           $trans->[$j]->{'umsatz'}  = $new_trans{umsatz};
@@ -882,6 +902,8 @@ sub generate_datev_lines {
   my ($self) = @_;
 
   my @datev_lines = ();
+
+  my @exempt_bank_accno = map { $_->chart->accno } @{ SL::DB::Manager::BankAccount->get_all(where => [ exempt_from_datev_export => 1 ]) || [] };
 
   foreach my $transaction ( @{ $self->{DATEV} } ) {
 
@@ -990,6 +1012,10 @@ sub generate_datev_lines {
     }
     # set lock for each transaction
     $datev_data{locked} = $self->locked;
+
+    # ignore transactions for bank accounts which have "exempt from DATEV export" set.
+    next if (any { $datev_data{konto} eq $_ || $datev_data{gegenkonto} eq $_ } @exempt_bank_accno);
+
     # add guids if datev export with documents is requested
     if ($self->documents) {
       # add all document links for the latest created/uploaded document

@@ -1,5 +1,6 @@
 [% USE HTML %]
 [% USE L %]
+[% USE P %]
 [% USE LxERP %]
 [% USE JavaScript %]
 
@@ -12,7 +13,7 @@
         shiptostreet:       "[% JavaScript.escape(vc_obj.street) %]",
         shiptozipcode:      "[% JavaScript.escape(vc_obj.zipcode) %]",
         shiptocity:         "[% JavaScript.escape(vc_obj.city) %]",
-        shiptocountry:      "[% JavaScript.escape(vc_obj.country) %]",
+        shiptocountry_id:   "[% JavaScript.escape(vc_obj.country_id) %]",
         shiptogln:          "[% JavaScript.escape(vc_obj.gln) %]",
         shiptocontact:      "[% JavaScript.escape(vc_obj.contact) %]",
         shiptophone:        "[% JavaScript.escape(vc_obj.phone) %]",
@@ -31,7 +32,7 @@
         shiptostreet:       "[% JavaScript.escape(shipto.shiptostreet) %]",
         shiptozipcode:      "[% JavaScript.escape(shipto.shiptozipcode) %]",
         shiptocity:         "[% JavaScript.escape(shipto.shiptocity) %]",
-        shiptocountry:      "[% JavaScript.escape(shipto.shiptocountry) %]",
+        shiptocountry_id:   "[% JavaScript.escape(shipto.shiptocountry_id) %]",
         shiptogln:          "[% JavaScript.escape(shipto.shiptogln) %]",
         shiptocontact:      "[% JavaScript.escape(shipto.shiptocontact) %]",
         shiptophone:        "[% JavaScript.escape(shipto.shiptophone) %]",
@@ -63,7 +64,7 @@
 
 [% IF cs_obj ;
   fields = ['shiptoname', 'shiptodepartment_1', 'shiptodepartment_2',
-            'shiptostreet', 'shiptozipcode', 'shiptocity', 'shiptocountry',
+            'shiptostreet', 'shiptozipcode', 'shiptocity', 'shiptocountry_id',
             'shiptogln', 'shiptocontact', 'shiptocp_gender', 'shiptophone',
             'shiptofax', 'shiptoemail'] ;
   FOREACH field = fields ;
@@ -90,47 +91,47 @@ END ;
    <tr>
     <th>[% LxERP.t8('Company Name') %]</th>
     <td>[% HTML.escape(vc_obj.name) %]</td>
-    <td>[% L.input_tag("shiptoname", shiptoname, "size", "35", class="wi-normal") %]</td>
+    <td>[% L.input_tag("shiptoname", shiptoname, class="wi-wide") %]</td>
    </tr>
    <tr>
     <th>[% LxERP.t8('Department') %]</th>
     <td>[% HTML.escape(vc_obj.department_1) %]</td>
-    <td>[% L.input_tag("shiptodepartment_1", shiptodepartment_1, "size", "35") %]</td>
+    <td>[% L.input_tag("shiptodepartment_1", shiptodepartment_1, class="wi-wide") %]</td>
    </tr>
    <tr>
     <th>[% LxERP.t8('Department') %] 2</th>
     <td>[% HTML.escape(vc_obj.department_2) %]</td>
-    <td>[% L.input_tag("shiptodepartment_2", shiptodepartment_2, "size", "35") %]</td>
+    <td>[% L.input_tag("shiptodepartment_2", shiptodepartment_2, class="wi-wide") %]</td>
    </tr>
    <tr>
     <th>[% LxERP.t8('Street') %]</th>
     <td>[% HTML.escape(vc_obj.street) %]</td>
-    <td>[% L.input_tag("shiptostreet", shiptostreet, "size", "35") %]</td>
+    <td>[% L.input_tag("shiptostreet", shiptostreet, class="wi-wide") %]</td>
    </tr>
    <tr>
     <th>[% LxERP.t8('Zipcode') %]</th>
     <td>[% HTML.escape(vc_obj.zipcode) %]</td>
-    <td>[% L.input_tag("shiptozipcode", shiptozipcode, "size", "35") %]</td>
+    <td>[% L.input_tag("shiptozipcode", shiptozipcode, class="wi-wide") %]</td>
    </tr>
    <tr>
     <th>[% LxERP.t8('City') %]</th>
     <td>[% HTML.escape(vc_obj.city) %]</td>
-    <td>[% L.input_tag("shiptocity", shiptocity, "size", "35") %]</td>
+    <td>[% L.input_tag("shiptocity", shiptocity, class="wi-wide") %]</td>
    </tr>
    <tr>
     <th>[% LxERP.t8('Country') %]</th>
-    <td>[% HTML.escape(vc_obj.country) %]</td>
-    <td>[% L.input_tag("shiptocountry", shiptocountry, "size", "35") %]</td>
+    <td>[% HTML.escape(vc_obj.country.description_localized(MYCONFIG.countrycode)) %]</td>
+    <td>[% P.country.picker('shiptocountry_id', shiptocountry_id, with_empty = 1, class="wi-wide") %]</td>
    </tr>
    <tr>
     <th>[% LxERP.t8('GLN') %]</th>
     <td>[% HTML.escape(vc_obj.gln) %]</td>
-    <td>[% L.input_tag("shiptogln", shiptogln, "size", "35") %]</td>
+    <td>[% L.input_tag("shiptogln", shiptogln, class="wi-wide") %]</td>
    </tr>
    <tr>
     <th>[% LxERP.t8('Contact') %]</th>
     <td>[% HTML.escape(vc_obj.contact) %]</td>
-    <td>[% L.input_tag("shiptocontact", shiptocontact, "size", "35") %]</td>
+    <td>[% L.input_tag("shiptocontact", shiptocontact, class="wi-wide") %]</td>
    </tr>
    <tr>
     <th>[% LxERP.t8('Gender') %]</th>
@@ -142,17 +143,17 @@ END ;
    <tr>
     <th>[% LxERP.t8('Phone') %]</th>
     <td>[% HTML.escape(vc_obj.phone) %]</td>
-    <td>[% L.input_tag("shiptophone", shiptophone, "size", "35") %]</td>
+    <td>[% L.input_tag("shiptophone", shiptophone, class="wi-wide") %]</td>
    </tr>
    <tr>
     <th>[% LxERP.t8('Fax') %]</th>
     <td>[% HTML.escape(vc_obj.fax) %]</td>
-    <td>[% L.input_tag("shiptofax", shiptofax, "size", "35") %]</td>
+    <td>[% L.input_tag("shiptofax", shiptofax, class="wi-wide") %]</td>
    </tr>
    <tr>
     <th>[% LxERP.t8('E-mail') %]</th>
     <td>[% HTML.escape(vc_obj.email) %]</td>
-    <td>[% L.input_tag("shiptoemail", shiptoemail, "size", "35") %]</td>
+    <td>[% L.input_tag("shiptoemail", shiptoemail, class="wi-wide") %]</td>
    </tr>
   [% FOREACH var = cvars %]
    <tr>

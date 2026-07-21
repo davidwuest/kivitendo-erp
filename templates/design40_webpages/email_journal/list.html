@@ -3,9 +3,9 @@
 [% USE P %]
 [% USE LxERP %]
 
-<h1>[% FORM.title %]</h1>
-
 [% PROCESS 'email_journal/_filter.html' filter=SELF.models.filtered.laundered %]
+
+<div class="wrapper">
 
 [% IF !ENTRIES.size %]
   <p>[% LxERP.t8('There are no entries that match the filter.') %]</p>
@@ -58,3 +58,4 @@
 [% END %]
 
 [% L.paginate_controls %]
+</div>

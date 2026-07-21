@@ -101,10 +101,10 @@ sub _post_transaction {
       ($form->{id}) = selectrow_query($form, $dbh, qq|SELECT nextval('glid')|);
 
       $query =
-        qq|INSERT INTO ap (id, invnumber, employee_id,currency_id, taxzone_id) | .
-        qq|VALUES (?, ?, (SELECT e.id FROM employee e WHERE e.login = ?),
+        qq|INSERT INTO ap (id, invnumber, employee_id, buyer_id, currency_id, taxzone_id) | .
+        qq|VALUES (?, ?, ?, ?,
                       (SELECT id FROM currencies WHERE name = ?), (SELECT taxzone_id FROM vendor WHERE id = ?) )|;
-      do_query($form, $dbh, $query, $form->{id}, $form->{invnumber}, $::myconfig{login}, $form->{currency}, $form->{vendor_id});
+      do_query($form, $dbh, $query, $form->{id}, $form->{invnumber}, $form->{employee_id}, $form->{buyer_id},  $form->{currency}, $form->{vendor_id});
 
     }
   }
@@ -165,7 +165,7 @@ sub _post_transaction {
                 amount = ?, duedate = ?, deliverydate = ?, tax_point = ?, paid = ?, netamount = ?,
                 currency_id = (SELECT id FROM currencies WHERE name = ?), notes = ?, department_id = ?, storno = ?, storno_id = ?,
                 globalproject_id = ?, direct_debit = ?, payment_id = ?, transaction_description = ?, intnotes = ?,
-                qrbill_data = ?
+                qrbill_data = ?, employee_id = ?, buyer_id = ?
                WHERE id = ?|;
     @values = ($form->{invnumber}, conv_date($form->{transdate}),
                   $form->{ordnumber}, conv_i($form->{vendor_id}),
@@ -179,6 +179,7 @@ sub _post_transaction {
                   conv_i($form->{payment_id}), $form->{transaction_description},
                   $form->{intnotes},
                   $form->{qrbill_data_encoded} ? uri_unescape($form->{qrbill_data_encoded}) : undef,
+                  $form->{employee_id}, $form->{buyer_id},
                   $form->{id});
     do_query($form, $dbh, $query, @values);
 
@@ -551,6 +552,8 @@ sub ap_transactions {
   # connect to database
   my $dbh = $form->get_standard_dbh($myconfig);
 
+  my $country_description_key = SL::DB::Country->description_column_localized($::myconfig{countrycode});
+
   my $query =
     qq|SELECT a.id, a.invnumber, a.transdate, a.duedate, a.amount, a.paid, | .
     qq|  a.ordnumber, v.name, a.invoice, a.netamount, a.datepaid, a.notes, | .
@@ -558,11 +561,13 @@ sub ap_transactions {
     qq|  a.transaction_description, a.itime::DATE AS insertdate, | .
     qq|  pr.projectnumber AS globalprojectnumber, | .
     qq|  pr.description   AS globalprojectdescription, | .
-    qq|  e.name AS employee, | .
-    qq|  v.vendornumber, v.country, v.ustid, | .
+    qq|  e.name AS employee, eb.name AS buyer, | .
+    qq|  v.vendornumber, v.ustid, | .
     qq|  tz.description AS taxzone, | .
+    qq|  countries.$country_description_key as country, | .
     qq|  pt.description AS payment_terms, | .
     qq|  department.description AS department, | .
+    qq|  payment_approvals.itime::DATE AS payment_approved, | .
     qq{  ( SELECT ch.accno || ' -- ' || ch.description
            FROM acc_trans at
            LEFT JOIN chart ch ON ch.id = at.chart_id
@@ -581,10 +586,13 @@ sub ap_transactions {
     qq|JOIN vendor v ON (a.vendor_id = v.id) | .
     qq|LEFT JOIN contacts cp ON (a.cp_id = cp.cp_id) | .
     qq|LEFT JOIN employee e ON (a.employee_id = e.id) | .
+    qq|LEFT JOIN employee eb ON (a.buyer_id = eb.id) | .
     qq|LEFT JOIN project pr ON (a.globalproject_id = pr.id) | .
     qq|LEFT JOIN tax_zones tz ON (tz.id = a.taxzone_id)| .
+    qq|LEFT JOIN countries ON (v.country_id = countries.id)| .
     qq|LEFT JOIN payment_terms pt ON (pt.id = a.payment_id)| .
-    qq|LEFT JOIN department ON (department.id = a.department_id)|;
+    qq|LEFT JOIN department ON (department.id = a.department_id)| .
+    qq|LEFT JOIN payment_approvals ON (payment_approvals.ap_id = a.id)|;
 
   my $where = '';
 

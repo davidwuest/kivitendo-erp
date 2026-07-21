@@ -6,7 +6,6 @@
 
 [% SET WEBDAV = SELF.webdav_objects %]
 
-<h1>[% title | html %]</h1>
 
 <form action='controller.pl' method='POST' id='form'>
 <input type="hidden" name="letter.id" value="[% letter.id | html %]">
@@ -48,7 +47,7 @@
       [% END %]
       <tr>
         <th>[% 'Contact Person' | $T8 %]</th>
-        <td class="wi-wider">[% L.select_tag('letter.cp_id', letter.customer_vendor_id ? letter.customer_vendor.contacts : [], value_key='cp_id', title_key='full_name', default=letter.cp_id, class='wi-wider') %]</td>
+        <td class="wi-wider">[% L.select_tag('letter.cp_id', SELF.cv_assigned_contacts, value_key='cp_id', title_key='full_name', default=letter.cp_id, class='wi-wider', with_empty=1) %]</td>
       </tr>
     </tbody>
   </table>

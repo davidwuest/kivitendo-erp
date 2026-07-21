@@ -5,7 +5,7 @@ use parent qw(SL::Controller::Base);
 
 use SL::Helper::Flash qw(flash_later);
 use SL::HTML::Util;
-use SL::Presenter::Tag qw(select_tag hidden_tag div_tag);
+use SL::Presenter::Tag qw(select_tag div_tag);
 use SL::Presenter::ReclamationFilter qw(filter);
 use SL::Locale::String qw(t8);
 use SL::SessionFile::Random;
@@ -638,7 +638,7 @@ sub action_customer_vendor_changed {
   $self->js->val( '#reclamation_salesman_id', $self->reclamation->salesman_id) if $self->reclamation->is_sales;
 
   $self->js
-    ->replaceWith('#reclamation_cp_id',            $self->build_contact_select)
+    ->replaceWith('#reclamation_contact_id',       $self->build_contact_select)
     ->replaceWith('#reclamation_shipto_id',        $self->build_shipto_select)
     ->replaceWith('#shipto_inputs  ',              $self->build_shipto_inputs)
     ->replaceWith('#business_info_row',            $self->build_business_info_row)
@@ -1271,6 +1271,17 @@ sub check_auth {
   $::auth->assert($self->type_data->rights('edit'));
 }
 
+sub cv_assigned_contacts {
+  my ($self) = @_;
+
+  my $contacts = $self->reclamation->customervendor ? $self->reclamation->customervendor->contacts() : [];
+  if ($self->reclamation->contact && none { $_->cp_id == $self->reclamation->contact->cp_id } @$contacts) {
+    push @$contacts, $self->reclamation->contact;
+  }
+
+  $contacts;
+}
+
 # build the selection box for contacts
 #
 # Needed, if customer/vendor changed.
@@ -1282,7 +1293,7 @@ sub build_contact_select {
     title_key  => 'full_name_dep',
     default    => $self->reclamation->contact_id,
     with_empty => 1,
-    style      => 'width: 300px',
+    class      => 'wi-lightwide',
   );
 }
 
@@ -1302,7 +1313,7 @@ sub build_shipto_select {
              title_key  => 'displayable_id',
              default    => $self->reclamation->shipto_id,
              with_empty => 0,
-             style      => 'width: 300px',
+             class      => 'wi-lightwide',
   );
 }
 
@@ -1510,7 +1521,8 @@ sub new_item {
   $new_attr{price_factor_id}        = $item->part->price_factor_id if ! $item->price_factor_id;
   $new_attr{sellprice}              = $price_src->price;
   $new_attr{discount}               = $discount_src->discount;
-  $new_attr{active_price_source}    = $price_src;
+  $new_attr{active_price_source}    = $::instance_conf->get_prices_always_free ? SL::PriceSource->new()->price_from_source("")
+                                                                               : $price_src;
   $new_attr{active_discount_source} = $discount_src;
   $new_attr{longdescription}        = $texts->{longdescription}    if ! defined $attr->{longdescription};
   $new_attr{project_id}             = $record->globalproject_id;

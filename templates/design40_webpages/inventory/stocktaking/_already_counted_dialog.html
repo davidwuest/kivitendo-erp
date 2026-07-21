@@ -7,10 +7,10 @@
 
 <p>
   [% 'This part was already counted for this bin:' | $T8 %]<br>
-  [% SELF.part.displayable_name %] / [% SELF.part.ean %]<br>
-  [% already_counted.first.bin.full_description %], [% 'Stocked Qty' | $T8 %]: [% LxERP.format_amount(stocked_qty, -2) %] [% SELF.part.unit %]
+  [% SELF.part.displayable_name | html %] / [% SELF.part.ean | html %]<br>
+  [% already_counted.first.bin.full_description | html %], [% 'Stocked Qty' | $T8 %]: [% LxERP.format_amount(stocked_qty, -2) %] [% SELF.part.unit | html %]
   [% IF SELF.part.unit != SELF.unit.name %]
-    ([% LxERP.format_amount(stocked_qty_in_form_units, -2) %] [% SELF.unit.name %])<br>
+    ([% LxERP.format_amount(stocked_qty_in_form_units, -2) %] [% SELF.unit.name | html %])<br>
   [% END %]
 </p>
 
@@ -27,9 +27,9 @@
     [% FOREACH ac = already_counted %]
       <tr>
         <td>[% ac.itime_as_timestamp %]</td>
-        <td>[% ac.employee.safe_name %]</td>
-        <td>[% ac.bin.full_description %]</td>
-        <td class="numeric">[% ac.qty_as_number %] [% ac.part.unit %]</td>
+        <td>[% ac.employee.safe_name | html %]</td>
+        <td>[% ac.bin.full_description | html %]</td>
+        <td class="numeric">[% ac.qty_as_number %] [% ac.part.unit | html %]</td>
       </tr>
     [% END %]
   </tbody>

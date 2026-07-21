@@ -13,7 +13,7 @@
 
 
 % laufende Kopfzeile:
-\ourhead{\kundennummer}{<%customernumber%>}{\mahnung}{<%dunning_id%>}{<%dunning%>}
+\ourhead{\kundennummer}{<%customernumber%>}{\zahlungserinnerung}{<%dunning_id%>}{<%dunning%>}
 
 \setkomavar{info0}[\vorgangsbez]    {<%transaction_description%>}
 \setkomavar{info1}[\datum]          {<%dunning_date%>}
@@ -23,7 +23,7 @@
 \setkomavar{info6}[\textEmail]      {<%employee_email%>}
 \setkomavar{fromname}               {<%employee_name%>}
 
-\setkomavar{title}{\mahnung<%if dunning_id%>~\nr~<%dunning_id%><%end if%>%}
+\setkomavar{title}{\zahlungserinnerung<%if dunning_id%>~\nr~<%dunning_id%><%end if%>}
 
 \begin{document}
 
@@ -63,10 +63,10 @@
 
   \mahnungsformel
 
-  \begin{SimpleTabular}[headline=\bfseries\rechnung~\nr&\bfseries\datum&\bfseries\betrag,colspec=rXr<{\tabcurrency}]
+  \begin{SimpleTabular}[headline=\bfseries\rechnung~\nr & \bfseries\rechnungsdatum & \bfseries\faelligAm & \bfseries\betrag, colspec=X l l r<{\tabcurrency}]
     % eigentliche Tabelle
     <%foreach dn_invnumber%>%
-      <%dn_invnumber%> & <%dn_transdate%> & <%dn_amount%> \\[0.1cm]
+      <%dn_invnumber%> & <%dn_transdate%> & <%dn_duedate%> & <%dn_amount%> \\[0.1cm]
     <%end dn_invnumber%>%
   \end{SimpleTabular}
 
@@ -77,8 +77,6 @@
 
 
   \beruecksichtigtBis~<%dunning_date%>.
-
-
   \schonGezahlt
 
   \closing{\gruesse}

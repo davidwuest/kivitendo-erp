@@ -96,9 +96,29 @@ sub _parse_our_address {
   push @result, [ 'PostcodeCode', $::instance_conf->get_address_zipcode ] if $::instance_conf->get_address_zipcode;
   push @result, _parts_to_lines(@street);
   push @result, [ 'CityName', $::instance_conf->get_address_city ] if $::instance_conf->get_address_city;
-  push @result, [ 'CountryID', SL::Helper::ISO3166::map_name_to_alpha_2_code($::instance_conf->get_address_country) // 'DE' ];
+  push @result, [ 'CountryID', SL::DB::Country->new(id => $::instance_conf->get_address_country_id)->load->iso2 ];
 
   return @result;
+}
+
+sub _generate_register_note {
+  my $register_note = '';
+
+  if ($::instance_conf->get_managing_directors) {
+    $register_note .= 'Geschäftsführer/in: ' . $::instance_conf->get_managing_directors . "\n";
+  }
+
+  if ($::instance_conf->get_commercial_register_entry) {
+    $register_note .= 'HRB-Nr. ' . $::instance_conf->get_commercial_register_entry;
+    $register_note .= ' '        . $::instance_conf->get_commercial_register_place if $::instance_conf->get_commercial_register_place;
+    $register_note .= "\n";
+  }
+
+  if ($::instance_conf->get_registered_seat) {
+    $register_note .= 'Sitz der Gesellschaft: ' . $::instance_conf->get_registered_seat . "\n";
+  }
+
+  return $register_note;
 }
 
 sub _buyer_contact_information {
@@ -156,12 +176,12 @@ sub _customer_postal_trade_address {
   #       <ram:PostalTradeAddress>
   $params{xml}->startTag("ram:PostalTradeAddress");
 
-  my @parts = grep { $_ } map { $params{customer}->$_ } qw(department_1 department_2 street);
+  my @parts = grep { $_ } map { $params{customer}->$_ } qw(street department_1 department_2);
 
   $params{xml}->dataElement("ram:PostcodeCode", _u8($params{customer}->zipcode));
   $params{xml}->dataElement("ram:" . $_->[0],   _u8($_->[1])) for _parts_to_lines(@parts);
   $params{xml}->dataElement("ram:CityName",     _u8($params{customer}->city));
-  $params{xml}->dataElement("ram:CountryID",    _u8(SL::Helper::ISO3166::map_name_to_alpha_2_code($params{customer}->country) // 'DE'));
+  $params{xml}->dataElement("ram:CountryID",    _u8($params{customer}->country->iso2));
   $params{xml}->endTag;
   #       </ram:PostalTradeAddress>
 }
@@ -172,7 +192,7 @@ sub _shipto_postal_trade_address {
   #       <ram:PostalTradeAddress>
   $params{xml}->startTag("ram:PostalTradeAddress");
 
-  my @parts = grep { $_ } map { $params{shipto}->$_ } qw(shiptodepartment_1 shiptodepartment_2 shiptostreet);
+  my @parts = grep { $_ } map { $params{shipto}->$_ } qw(shiptostreet shiptodepartment_1 shiptodepartment_2);
 
   $params{xml}->dataElement("ram:PostcodeCode", _u8($params{shipto}->shiptozipcode));
   $params{xml}->dataElement("ram:" . $_->[0],   _u8($_->[1])) for _parts_to_lines(@parts);
@@ -266,25 +286,65 @@ sub _line_item {
   $params{xml}->startTag("ram:AssociatedDocumentLineDocument");
   $params{xml}->dataElement("ram:LineID", $params{line_number} + 1);
   $params{xml}->endTag;
+  #   </ram:AssociatedDocumentLineDocument>
 
+  #   <ram:SpecifiedTradeProduct>
   $params{xml}->startTag("ram:SpecifiedTradeProduct");
-  if ($params{item}->part->ean) {
-    $params{xml}->dataElement("ram:SellerAssignedID", _u8($params{item}->part->ean), schemeID => '0160');
-  } else {
+
+  if (_is_profile($self, PROFILE_XRECHNUNG())) {
+    if ($params{item}->part->ean) {
+      $params{xml}->dataElement("ram:SellerAssignedID", _u8($params{item}->part->ean), schemeID => '0160');
+    } else {
+      $params{xml}->dataElement("ram:SellerAssignedID", _u8($params{item}->part->partnumber));
+    }
+
+  } else {                      # profile != XRechnung
+    if ($params{item}->part->ean) {
+      $params{xml}->dataElement("ram:GlobalID", _u8($params{item}->part->ean), schemeID => '0160');
+    }
     $params{xml}->dataElement("ram:SellerAssignedID", _u8($params{item}->part->partnumber));
   }
+
   $params{xml}->dataElement("ram:Name",             _u8($params{item}->description));
   $params{xml}->dataElement("ram:Description",      _u8($params{item}->longdescription_as_stripped_html))
     if $params{item}->longdescription_as_stripped_html;
+
+  $params{xml}->endTag;
+  #   </ram:SpecifiedTradeProduct>
+
+  #   <ram:SpecifiedLineTradeAgreement>
+  $params{xml}->startTag("ram:SpecifiedLineTradeAgreement");
+
+  # GrossPrice is the not discounted price per unit. This is stored in the
+  # items sellprice. In the PTC-data, the sellprice is already discounted.
+  #       <ram:GrossPriceProductTradePrice>
+  $params{xml}->startTag("ram:GrossPriceProductTradePrice");
+  $params{xml}->dataElement("ram:ChargeAmount", $item_ptc->{sellprice_no_alc});
+
+  if ($params{item}->discount) {
+    #       <ram:AppliedTradeAllowanceCharge>
+    $params{xml}->startTag("ram:AppliedTradeAllowanceCharge");
+
+    $params{xml}->startTag("ram:ChargeIndicator");
+    $params{xml}->dataElement("udt:Indicator", "false"); # Allowance/Abschlag => false
+    $params{xml}->endTag;
+
+    $params{xml}->dataElement("ram:CalculationPercent", _r2($params{item}->discount * 100))                     if _is_profile($self, PROFILE_FACTURX_EXTENDED());
+    $params{xml}->dataElement("ram:BasisAmount",        $item_ptc->{sellprice_no_alc})                          if _is_profile($self, PROFILE_FACTURX_EXTENDED());
+    $params{xml}->dataElement("ram:ActualAmount",       $item_ptc->{sellprice_no_alc} - $item_ptc->{sellprice});
+    $params{xml}->dataElement("ram:Reason",             _u8(t8('Discount')))                                    if _is_profile($self, PROFILE_FACTURX_EXTENDED());
+
+    $params{xml}->endTag;
+    #       </ram:AppliedTradeAllowanceCharge>
+  }
+
+  #       </ram:GrossPriceProductTradePrice>
   $params{xml}->endTag;
 
-  $params{xml}->startTag("ram:SpecifiedLineTradeAgreement");
-  $params{xml}->startTag("ram:GrossPriceProductTradePrice");
-  $params{xml}->dataElement("ram:ChargeAmount", $item_ptc->{sellprice});
-  $params{xml}->endTag;
   $params{xml}->startTag("ram:NetPriceProductTradePrice");
   $params{xml}->dataElement("ram:ChargeAmount", $item_ptc->{sellprice});
   $params{xml}->endTag;
+
   $params{xml}->endTag;
   #   </ram:SpecifiedLineTradeAgreement>
 
@@ -305,9 +365,10 @@ sub _line_item {
   $params{xml}->endTag;
   #     </ram:ApplicableTradeTax>
 
+  my $linetotal_net = $self->taxincluded ? $item_ptc->{linetotal} - $item_ptc->{tax_amount} : $item_ptc->{linetotal};
   #     <ram:SpecifiedTradeSettlementLineMonetarySummation>
   $params{xml}->startTag("ram:SpecifiedTradeSettlementLineMonetarySummation");
-  $params{xml}->dataElement("ram:LineTotalAmount", _r2($item_ptc->{linetotal}));
+  $params{xml}->dataElement("ram:LineTotalAmount", _r2($linetotal_net));
   $params{xml}->endTag;
   #     </ram:SpecifiedTradeSettlementLineMonetarySummation>
 
@@ -530,7 +591,9 @@ sub _included_note {
   my ($self, %params) = @_;
 
   $params{xml}->startTag("ram:IncludedNote");
-  $params{xml}->dataElement("ram:Content", _u8($params{note}));
+  $params{xml}->dataElement("ram:Content",     _u8($params{note}));
+  $params{xml}->dataElement("ram:SubjectCode", _u8($params{subject_code})) if $params{subject_code};
+
   $params{xml}->endTag;
 }
 
@@ -571,11 +634,18 @@ sub _exchanged_document {
   my $std_note = first { $_->language_id == $self->language_id } @{ $std_notes };
   $std_note  //= first { !defined $_->language_id }              @{ $std_notes };
 
-  my $notes = $self->notes_as_stripped_html;
+  my $notes         = $self->notes_as_stripped_html;
+  my $register_note = _generate_register_note();
 
-  _included_note($self, %params, note => $self->transaction_description) if $self->transaction_description;
-  _included_note($self, %params, note => $notes)                         if $notes;
-  _included_note($self, %params, note => $std_note->translation)         if $std_note;
+  _included_note($self, %params, note => $self->transaction_description)        if $self->transaction_description;
+  _included_note($self, %params, note => $notes)                                if $notes;
+  _included_note($self, %params, note => $std_note->translation)                if $std_note;
+  _included_note($self, %params, note => $register_note, subject_code => 'REG') if $register_note;
+
+  if (my $reduction_terms = $self->customer->reduction_terms) {
+    $reduction_terms =~ s{\r\n}{\n}g;
+    _included_note($self, %params, note => $reduction_terms);
+  }
 
   $params{xml}->endTag;
   #   </rsm:ExchangedDocument>
@@ -604,16 +674,36 @@ sub _seller_trade_party {
 
   #       <ram:SellerTradeParty>
   $params{xml}->startTag("ram:SellerTradeParty");
-  # 0088 = GLN, 0060 = D-U-N-S, only one ID is allowed
-  if ($self->customer->c_vendor_id) {
-    $params{xml}->dataElement("ram:ID", _u8($self->customer->c_vendor_id));
-  } elsif($::instance_conf->get_gln) {
-    $params{xml}->dataElement("ram:ID", _u8($::instance_conf->get_gln), schemeID => '0088');
-  } elsif($::instance_conf->get_duns) {
-    $params{xml}->dataElement("ram:ID", _u8($::instance_conf->get_duns), schemeID => '0060');
-  } else {
-    # no sensible default yet
+
+  if (_is_profile($self, PROFILE_XRECHNUNG())) {
+    # 0088 = GLN, 0060 = D-U-N-S, only one ID is allowed
+    if ($self->customer->c_vendor_id) {
+      $params{xml}->dataElement("ram:ID", _u8($self->customer->c_vendor_id));
+
+    } elsif ($::instance_conf->get_gln) {
+      $params{xml}->dataElement("ram:ID", _u8($::instance_conf->get_gln),  schemeID => '0088');
+
+    } elsif ($::instance_conf->get_duns) {
+      $params{xml}->dataElement("ram:ID", _u8($::instance_conf->get_duns), schemeID => '0060')
+
+    } else {
+      # no sensible default yet
+    }
+
+  } else {                      # profile != XRechnung
+    if ($self->customer->c_vendor_id) {
+      $params{xml}->dataElement("ram:ID", _u8($self->customer->c_vendor_id));
+    }
+
+    if ($::instance_conf->get_gln) {
+      $params{xml}->dataElement("ram:GlobalID", _u8($::instance_conf->get_gln),  schemeID => '0088');
+    }
+
+    if ($::instance_conf->get_duns) {
+      $params{xml}->dataElement("ram:GlobalID", _u8($::instance_conf->get_duns), schemeID => '0060');
+    }
   }
+
   $params{xml}->dataElement("ram:Name", _u8($::instance_conf->get_company));
 
   #         <ram:DefinedTradeContact>
@@ -662,11 +752,21 @@ sub _buyer_trade_party {
 
   #       <ram:BuyerTradeParty>
   $params{xml}->startTag("ram:BuyerTradeParty");
-  if ($self->customer->gln) {
-    $params{xml}->dataElement("ram:ID", _u8($self->customer->gln), schemeID => '0088');
+
+  if (_is_profile($self, PROFILE_XRECHNUNG())) {
+    if ($self->customer->gln) {
+      $params{xml}->dataElement("ram:ID", _u8($self->customer->gln), schemeID => '0088');
+    } else {
+      $params{xml}->dataElement("ram:ID", _u8($self->customer->customernumber));
+    }
+
   } else {
     $params{xml}->dataElement("ram:ID", _u8($self->customer->customernumber));
+    if ($self->customer->gln) {
+      $params{xml}->dataElement("ram:GlobalID", _u8($self->customer->gln), schemeID => '0088');
+    }
   }
+
   $params{xml}->dataElement("ram:Name", _u8($self->customer->name));
 
   _buyer_contact_information($self, %params, contact => $self->contact) if ($self->cp_id);
@@ -739,7 +839,6 @@ sub _applicable_header_trade_delivery {
     #       <ram:DespatchAdviceReferencedDocument>
     $params{xml}->startTag("ram:DespatchAdviceReferencedDocument");
     $params{xml}->dataElement("ram:IssuerAssignedID", _u8($self->donumber));
-
     $params{xml}->endTag;
     #       </ram:DespatchAdviceReferencedDocument>
   }

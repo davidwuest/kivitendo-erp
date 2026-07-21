@@ -3,6 +3,8 @@ package SL::Presenter::ALL;
 use strict;
 
 use SL::Presenter::Chart;
+use SL::Presenter::Contact;
+use SL::Presenter::Country;
 use SL::Presenter::CustomerVendor;
 use SL::Presenter::DatePeriod;
 use SL::Presenter::DeliveryOrder;
@@ -28,9 +30,12 @@ use SL::Presenter::Tag;
 use SL::Presenter::BankAccount;
 use SL::Presenter::BankTransaction;
 use SL::Presenter::MaterialComponents;
+use SL::Presenter::Warehouse;
 
 our %presenters = (
   chart                       => 'SL::Presenter::Chart',
+  contact                     => 'SL::Presenter::Contact',
+  country                     => 'SL::Presenter::Country',
   customer_vendor             => 'SL::Presenter::CustomerVendor',
   date_period                 => 'SL::Presenter::DatePeriod',
   delivery_order              => 'SL::Presenter::DeliveryOrder',
@@ -56,6 +61,7 @@ our %presenters = (
   bank_account                => 'SL::Presenter::BankAccount',
   bank_transaction            => 'SL::Presenter::BankTransaction',
   M                           => 'SL::Presenter::MaterialComponents',
+  warehouse                   => 'SL::Presenter::Warehouse',
 );
 
 sub wrap {

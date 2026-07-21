@@ -440,7 +440,7 @@ sub header {
 
   $layout->use_javascript("$_.js") for @{ $params{use_javascripts} // [] };
 
-  $self->{favicon} ||= "favicon.ico";
+  $self->{favicon} ||= "image/favicon.ico";
   $self->{titlebar} = join ' - ', grep $_, $self->{title}, $self->{login}, $::myconfig{dbname}, $self->read_version if $self->{title} || !$self->{titlebar};
 
   # build includes
@@ -454,7 +454,7 @@ sub header {
 
   push @header, map { qq|<link rel="stylesheet" href="${_}${auto_reload_resources_param}" type="text/css" title="Stylesheet">| } $layout->stylesheets;
   push @header, "<style type='text/css'>\@page { size:landscape; }</style> "                     if $self->{landscape};
-  push @header, "<link rel='shortcut icon' href='$self->{favicon}' type='image/x-icon'>"         if -f $self->{favicon};
+  push @header, "<link rel='shortcut icon' href='$self->{favicon}' type='image/x-icon'>"         if -f "public/$self->{favicon}";
   push @header, map { qq|<script type="text/javascript" src="${_}${auto_reload_resources_param}"></script>| }                    $layout->javascripts;
   push @header, '<meta name="viewport" content="width=device-width, initial-scale=1">';
   push @header, $self->{javascript} if $self->{javascript};
@@ -1746,7 +1746,7 @@ sub add_shipto {
   my $shipto;
   my @values;
 
-  foreach my $item (qw(name department_1 department_2 street zipcode city country gln
+  foreach my $item (qw(name department_1 department_2 street zipcode city country_id gln
                        contact phone fax email)) {
     if ($self->{"shipto$item"}) {
       $shipto = 1 if ($self->{$item} ne $self->{"shipto$item"});
@@ -1772,7 +1772,7 @@ sub add_shipto {
                      shiptostreet = ?,
                      shiptozipcode = ?,
                      shiptocity = ?,
-                     shiptocountry = ?,
+                     shiptocountry_id = ?,
                      shiptogln = ?,
                      shiptocontact = ?,
                      shiptophone = ?,
@@ -1789,7 +1789,7 @@ sub add_shipto {
                      shiptostreet = ? AND
                      shiptozipcode = ? AND
                      shiptocity = ? AND
-                     shiptocountry = ? AND
+                     shiptocountry_id = ? AND
                      shiptogln = ? AND
                      shiptocontact = ? AND
                      shiptophone = ? AND
@@ -1802,7 +1802,7 @@ sub add_shipto {
     if(!$insert_check){
       my $insert_query =
         qq|INSERT INTO shipto (trans_id, shiptoname, shiptodepartment_1, shiptodepartment_2,
-                               shiptostreet, shiptozipcode, shiptocity, shiptocountry, shiptogln,
+                               shiptostreet, shiptozipcode, shiptocity, shiptocountry_id, shiptogln,
                                shiptocontact, shiptophone, shiptofax, shiptoemail, shiptocp_gender, module)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|;
       do_query($self, $dbh, $insert_query, $id, @values, $module);
@@ -1874,30 +1874,6 @@ sub get_employee_data {
       $self->{$params{prefix} . "_name"} = $employee->name;
     }
  }
-  $main::lxdebug->leave_sub();
-}
-
-sub _get_contacts {
-  $main::lxdebug->enter_sub();
-
-  my ($self, $dbh, $id, $key) = @_;
-
-  $key = "all_contacts" unless ($key);
-
-  if (!$id) {
-    $self->{$key} = [];
-    $main::lxdebug->leave_sub();
-    return;
-  }
-
-  my $query =
-    qq|SELECT cp_id, cp_cv_id, cp_name, cp_givenname, cp_abteilung | .
-    qq|FROM contacts | .
-    qq|WHERE cp_cv_id = ? | .
-    qq|ORDER BY lower(cp_name)|;
-
-  $self->{$key} = selectall_hashref_query($self, $dbh, $query, $id);
-
   $main::lxdebug->leave_sub();
 }
 
@@ -2061,20 +2037,6 @@ sub _get_languages {
   $main::lxdebug->leave_sub();
 }
 
-sub _get_dunning_configs {
-  $main::lxdebug->enter_sub();
-
-  my ($self, $dbh, $key) = @_;
-
-  $key = "all_dunning_configs" unless ($key);
-
-  my $query = qq|SELECT * FROM dunning_config ORDER BY dunning_level|;
-
-  $self->{$key} = selectall_hashref_query($self, $dbh, $query);
-
-  $main::lxdebug->leave_sub();
-}
-
 sub _get_currencies {
 $main::lxdebug->enter_sub();
 
@@ -2214,18 +2176,6 @@ sub get_lists {
   my $dbh = $self->get_standard_dbh(\%main::myconfig);
   my ($sth, $query, $ref);
 
-  my ($vc, $vc_id);
-  if ($params{contacts}) {
-    $vc = 'customer' if $self->{"vc"} eq "customer";
-    $vc = 'vendor'   if $self->{"vc"} eq "vendor";
-    die "invalid use of get_lists, need 'vc'" unless $vc;
-    $vc_id = $self->{"${vc}_id"};
-  }
-
-  if ($params{"contacts"}) {
-    $self->_get_contacts($dbh, $vc_id, $params{"contacts"});
-  }
-
   if ($params{"projects"} || $params{"all_projects"}) {
     $self->_get_projects($dbh, $params{"all_projects"} ?
                          $params{"all_projects"} : $params{"projects"},
@@ -2258,10 +2208,6 @@ sub get_lists {
 
   if ($params{"business_types"}) {
     $self->_get_business_types($dbh, $params{"business_types"});
-  }
-
-  if ($params{"dunning_configs"}) {
-    $self->_get_dunning_configs($dbh, $params{"dunning_configs"});
   }
 
   if($params{"currencies"}) {
@@ -2525,6 +2471,7 @@ sub create_links {
 
   my $extra_columns = '';
   $extra_columns   .= 'a.direct_debit, ' if ($module eq 'AR') || ($module eq 'AP');
+  $extra_columns   .= 'a.buyer_id, '     if ($module eq 'AP');
 
   if ($self->{id}) {
     $query =
@@ -3300,6 +3247,9 @@ sub set_addition_billing_address_print_variables {
 
   my $address = SL::DB::Manager::AdditionalBillingAddress->find_by(id => $self->{billing_address_id});
   return if !$address;
+
+  my $language_code = $self->{language_id} ? SL::DB::Language->new(id => $self->{language_id})->load->template_code : undef;
+  $self->{billing_address_country} = $address->country->description_localized($language_code) if $address->country;
 
   $self->{"billing_address_${_}"} = $address->$_ for map { $_->name } @{ $address->meta->columns };
 }

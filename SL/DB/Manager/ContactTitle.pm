@@ -8,6 +8,7 @@ use strict;
 use parent qw(SL::DB::Helper::Manager);
 
 use SL::DB::Helper::Sorted;
+use SL::DBUtils;
 
 sub object_class { 'SL::DB::ContactTitle' }
 
@@ -18,6 +19,21 @@ sub _sort_spec {
            columns => { SIMPLE => 'ALL',
                         map { ( $_ => "lower(contact_titles.$_)" ) } qw(description)
                       });
+}
+
+sub delete_unused {
+  my ($class) = @_;
+
+  my $dbh  = $::form->get_standard_dbh();
+
+  my $sql_str = qq|DELETE FROM contact_titles ct
+                   WHERE NOT EXISTS (
+                     SELECT
+                     FROM contacts c
+                     WHERE c.cp_title IS NOT NULL AND c.cp_title = ct.description
+                   )|;
+
+  do_query($::form, $dbh, $sql_str);
 }
 
 1;

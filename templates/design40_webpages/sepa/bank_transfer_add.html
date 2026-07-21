@@ -13,8 +13,6 @@
   [% SET iris = 'is' %]
 [% END %]
 
-<h1>[% title %]</h1>
-
 <form action="sepa.pl" method="post" id="form">
 <div class="wrapper">
 
@@ -30,11 +28,13 @@
       title_key='displayable_name',
       with_empty=0,
       class='wi-wide',
-  ) %]
+  ) %] <br/>
+<p>[% L.checkbox_tag('combine_payments', value => 1, checked => combine_payments, label=LxERP.t8('Combine Payments')) %]</p>
 </div><!-- /.select-item -->
 </div><!-- /.wrapper -->
 
-<table class="tbl-list">
+<div class="wrapper">
+ <table class="tbl-list">
   <thead>
     <tr>
       <th><input type="checkbox" id="select_all"></th>
@@ -50,17 +50,25 @@
       <th>[% 'Payment type' | $T8 %]</th>
       <th>[% 'Skonto information' | $T8 %]</th>
       <th>[% 'Currency of record' | $T8 %]</th>
+      [% IF is_vendor && INSTANCE_CONF.get_payment_approval %]
+        <th>[% 'Payment Approved' | $T8 %]</th>
+      [% END %]
     </tr>
   </thead>
   <tbody>
     [% FOREACH invoice = INVOICES %]
-      <tr[% IF (!invoice.vc_bank_info_ok && invoice.checked) || invoice.is_sepa_blocked || invoice.currency_not_eur %] class="listrow_error"[% END %]>
+      <tr[% IF (!invoice.vc_bank_info_ok && invoice.checked) || invoice.is_sepa_blocked || invoice.currency_not_eur || !invoice.approved %]
+            class="listrow_error"
+         [% ELSIF invoice.credit_note %]
+            class="listrow_ok"
+         [% END %]>
         <td>
           <input type="hidden" name="bank_transfers[+].[% arap %]_id" value="[% HTML.escape(invoice.id) %]">
           <input type="hidden" id="amount_less_skonto_[% loop.count %]" name="amount_less_skonto_[% loop.count %]" value="[% LxERP.format_amount(invoice.amount_less_skonto, 2) %]">
           <input type="hidden" id="invoice_open_amount_[% loop.count %]" name="invoice_open_amount_[% loop.count %]" value="[% LxERP.format_amount(invoice.open_amount - invoice.transfer_amount, 2) %]">
           <input type="hidden" id="skonto_amount_[% loop.count %]" name="skonto_amount_[% loop.count %]" value="[% LxERP.format_amount(invoice.skonto_amount, 2) %]">
-          [% IF invoice.vc_bank_info_ok && !invoice.is_sepa_blocked && !invoice.currency_not_eur %]
+          <input type="hidden" id="invoice_open_amount_less_skonto_[% loop.count %]" name="invoice_open_amount_less_skonto_[% loop.count %]" value="[% LxERP.format_amount(invoice.open_amount_less_skonto, 2) %]">
+          [% IF invoice.vc_bank_info_ok && !invoice.is_sepa_blocked && !invoice.currency_not_eur && invoice.approved %]
             [% L.checkbox_tag("ids[]", value=invoice.id, checked=invoice.checked) %]
           [% END %]
         </td>
@@ -78,6 +86,8 @@
                  SET show_vc_bank_info_footnote = '1';
                END; -%]
           </a>
+         [% ELSIF invoice.credit_note %]
+          [% 'Credit Note' | $T8 %]
          [% END %]
         </td>
         <td>
@@ -91,12 +101,16 @@
                 GET ' <sup>(°)</sup>';
                 SET show_is_sepa_blocked_footnote = '1';
               END;
+              IF !invoice.approved;
+                GET ' <sup>(x)</sup>';
+                SET show_is_not_approved_footnote = '1';
+              END;
           -%]
          </a>
         </td>
-        <td>[% LxERP.format_amount(invoice.invoice_amount, 2) %]</td>
-        <td>[% LxERP.format_amount(invoice.transfer_amount * -1, 2) %]</td>
-        <td>[% IF invoice.within_skonto_period %] [% LxERP.format_amount(invoice.amount_less_skonto, 2) %] [% ELSE %] [% LxERP.format_amount(invoice.open_amount - invoice.transfer_amount, 2) %][% END %] </td>
+        <td class="numeric">[% LxERP.format_amount(invoice.invoice_amount, 2) %]</td>
+        <td class="numeric">[% LxERP.format_amount(invoice.transfer_amount * -1, 2) %]</td>
+        <td class="numeric">[% IF invoice.within_skonto_period %] [% LxERP.format_amount(invoice.amount_less_skonto, 2) %] [% ELSE %] [% LxERP.format_amount(invoice.open_amount - invoice.transfer_amount, 2) %][% END %] </td>
         <td>[% invoice.transdate %]</td>
         <td>[% invoice.duedate %]</td>
         <td>
@@ -107,11 +121,18 @@
           [% END %]
          <input type="text" name="bank_transfers[].reference" value="[% HTML.escape(reference.substr(0, 140)) %]" maxlength="140" size="30">
         </td>
-        <td>
-          <input type="text" id=[% loop.count %] name="bank_transfers[].amount" id="amount_[% loop.count %]" value="[% IF invoice.within_skonto_period %] [% LxERP.format_amount(invoice.amount_less_skonto, 2) %] [% ELSE %] [% LxERP.format_amount(invoice.open_amount - invoice.transfer_amount, 2) %][% END %]" style="text-align: right" size="12">
+        <td class="right">
+          <input type="text" name="bank_transfers[].amount" id="[% loop.count %]"
+            [% IF invoice.within_skonto_period %]
+              value="[% LxERP.format_amount(invoice.open_amount_less_skonto, 2) %]"
+            [% ELSE %]
+              value="[% LxERP.format_amount(invoice.open_amount - invoice.transfer_amount, 2) %]"
+            [% END %]
+            [% UNLESS INSTANCE_CONF.get_sepa_amount_editable %]readonly[% END %]
+            class="numeric wi-verysmall">
         </td>
         <td>
-          [% L.select_tag('bank_transfers[].payment_type', invoice.payment_select_options, value_key => 'payment_type', title_key => 'display', id => 'payment_type_' _ loop.count, class => 'type_target' ) %]
+          [% L.select_tag('bank_transfers[].payment_type', invoice.payment_select_options, value_key => 'payment_type', title_key => 'display', id => 'payment_type_' _ loop.count, class => 'type_target wi-mediumsmall' ) %]
         </td>
         <td[% IF invoice.within_skonto_period %] class="highlight"[% END %]>
           [% IF invoice.skonto_amount %]
@@ -121,12 +142,20 @@
         <td>
           [% invoice.currency %][% IF invoice.currency_not_eur %] <sup>[% L.link('#currency_not_euro', '(°)')%]</sup>[% END %]
         </td>
+        [% IF is_vendor && INSTANCE_CONF.get_payment_approval %]
+          <td[% IF invoice.payment_approval %] class="highlight"[% END %]>
+            [% IF invoice.payment_approval %]
+              [% invoice.payment_approval.itime_as_date | html %] [% invoice.payment_approval.employee.name | html %]
+            [% END %]
+          </td>
+        [% END %]
       </tr>
     [% END %]
   </tbody>
-</table>
+ </table>
+</div><!-- /.wrapper -->
 
-[% IF show_vc_bank_info_footnote || show_is_sepa_blocked_footnote %]
+[% IF show_vc_bank_info_footnote || show_is_sepa_blocked_footnote || show_is_not_approved_footnote %]
 <div class="long-desc wrapper">
   [% IF show_vc_bank_info_footnote %]
   <p><sup>(1)</sup>
@@ -155,6 +184,12 @@
     [%- 'The currency of this invoice is not "EUR".' | $T8 %]
   </p>
   [%- END %]
+  [%- IF show_is_not_approved_footnote %]
+  <p>
+    <sup>(x)</sup>
+    [%- 'The payment for this invoice should be approved.' | $T8 %]
+  </p>
+  [%- END %]
 </div><!-- /.long-desc -->
 [% END %]
 
@@ -175,7 +210,7 @@ $( ".type_target" ).change(function() {
   if ( $(this).val() == "without_skonto" ) {
       $('#' + id).val( $('#invoice_open_amount_' + id).val() );
   } else if ( $(this).val() == "with_skonto_pt" ) {
-            $('#' + id).val( $('#amount_less_skonto_' + id).val() );
+      $('#' + id).val( $('#invoice_open_amount_less_skonto_' + id).val() );
   }
 });
 

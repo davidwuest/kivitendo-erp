@@ -42,6 +42,7 @@ use SL::Common;
 use SL::CVar;
 use SL::DBUtils;
 use SL::DB;
+use SL::DB::Order::TypeData qw(:types);
 use SL::Util qw(trim);
 use Text::ParseWords;
 
@@ -62,8 +63,10 @@ sub search {
   my $where = "1 = 1";
   my @values;
 
+  my $country_description_key = SL::DB::Country->description_column_localized($::myconfig{countrycode});
   my %allowed_sort_columns = (
       "id"                 => "ct.id",
+      "obsolete"           => "ct.obsolete",
       "customernumber"     => "ct.customernumber",
       "vendornumber"       => "ct.vendornumber",
       "name"               => "ct.name",
@@ -73,6 +76,8 @@ sub search {
       "phone"              => "ct.phone",
       "fax"                => "ct.fax",
       "email"              => "ct.email",
+      "invoice_mail"       => "ct.invoice_mail",
+      "delivery_order_mail" => "ct.delivery_order_mail",
       "street"             => "ct.street",
       "taxnumber"          => "ct.taxnumber",
       "business"           => "b.description",
@@ -81,7 +86,7 @@ sub search {
       "quonumber"          => "ct.quonumber",
       "zipcode"            => "ct.zipcode",
       "city"               => "ct.city",
-      "country"            => "ct.country",
+      "country"            => "countries.$country_description_key",
       "gln"                => "ct.gln",
       "discount"           => "ct.discount",
       "insertdate"         => "ct.itime",
@@ -93,6 +98,7 @@ sub search {
       "creditlimit"        => "ct.creditlimit",
       "commercial_court"   => "ct.commercial_court",
       "dunning_lock"       => "ct.dunning_lock",
+      "reduction_terms"    => "ct.reduction_terms",
     );
 
   $form->{sort} ||= "name";
@@ -107,7 +113,7 @@ sub search {
   }
   my $sortdir   = !defined $form->{sortdir} ? 'ASC' : $form->{sortdir} ? 'ASC' : 'DESC';
 
-  if ($sortorder !~ /(business|creditlimit|id|discount|itime|dunning_lock)/ && !$join_records) {
+  if ($sortorder !~ /(business|creditlimit|id|discount|itime|dunning_lock|obsolete)/ && !$join_records) {
     $sortorder  = "lower($sortorder) ${sortdir}";
   } else {
     $sortorder .= " ${sortdir}";
@@ -126,7 +132,7 @@ sub search {
   }
 
   if ($form->{cp_name}) {
-    $where .= " AND ct.id IN (SELECT cp_cv_id FROM contacts WHERE lower(cp_name) LIKE lower(?))";
+    $where .= " AND ct.id IN (SELECT cc.${cv}_id FROM ${cv}_contacts cc inner join contacts cp on cc.contact_id = cp.cp_id WHERE lower(cp.cp_name) LIKE lower(?))";
     push @values, like($form->{cp_name});
   }
 
@@ -165,17 +171,17 @@ sub search {
     push @values, (like($form->{addr_city})) x 2;
   }
 
-  if ($form->{addr_country}) {
-    $where .= " AND ((lower(ct.country) LIKE lower(?))
+  if ($form->{addr_country_id}) {
+    $where .= " AND ((ct.country_id = ?)
                      OR
                      (ct.id IN (
                         SELECT so.trans_id
                         FROM shipto so
                         WHERE (so.module = 'CT')
-                          AND (lower(so.shiptocountry) LIKE lower(?))
+                          AND (so.shiptocountry_id = ?)
                       ))
                      )";
-    push @values, (like($form->{addr_country})) x 2;
+    push @values, (conv_i($form->{addr_country_id})) x 2;
   }
 
   if ($form->{addr_gln}) {
@@ -191,10 +197,17 @@ sub search {
     push @values, (like($form->{addr_gln})) x 2;
   }
 
-  if ( $form->{status} eq 'orphaned' ) {
+  if ( $form->{status} eq 'orphaned' || $form->{status} eq 'quotations_at_best' ) {
+    my @order_types     = (SALES_ORDER_TYPE, PURCHASE_ORDER_TYPE, SALES_ORDER_INTAKE_TYPE, PURCHASE_ORDER_CONFIRMATION_TYPE);
+    my @quotation_types = (REQUEST_QUOTATION_TYPE, SALES_QUOTATION_TYPE, PURCHASE_QUOTATION_INTAKE_TYPE);
+
+    my $types = join(', ', map { "'$_'" } ($form->{status} eq 'orphaned')
+              ? (@order_types, @quotation_types)
+              : (@order_types));
+
     $where .=
       qq| AND ct.id NOT IN | .
-      qq|   (SELECT o.${cv}_id FROM oe o, $cv cv WHERE cv.id = o.${cv}_id)|;
+      qq|   (SELECT o.${cv}_id FROM oe o, $cv cv WHERE cv.id = o.${cv}_id AND o.record_type IN ($types))|;
     if ($cv eq 'customer') {
       $where .=
         qq| AND ct.id NOT IN | .
@@ -273,7 +286,8 @@ sub search {
     $where .= qq| AND (ct.phone ~* ? OR
                        ct.fax   ~* ? OR
                        ct.id    IN
-                         (SELECT cp_cv_id FROM contacts
+                         (SELECT ${cv}_id FROM ${cv}_contacts
+                          LEFT JOIN contacts ON cp_id = contact_id
                           WHERE cp_phone1      ~* ? OR
                                 cp_phone2      ~* ? OR
                                 cp_fax         ~* ? OR
@@ -299,15 +313,22 @@ sub search {
   my $pg_select = $form->{l_pricegroup} ? qq|, pg.pricegroup as pricegroup | : '';
   my $pg_join   = $form->{l_pricegroup} ? qq|LEFT JOIN pricegroup pg ON (ct.pricegroup_id = pg.id) | : '';
 
+  my $cvl_select = qq|, vc.name as linked_customer_vendor, vc.id as linked_customer_vendor_id |;
+  my $cvl_join   = qq|LEFT JOIN customer_vendor_links cvl ON (ct.id = cvl.${cv}_id) | .
+                   qq|LEFT JOIN $vc vc ON (vc.id = cvl.${vc}_id) |;
+
   my $main_cp_select = '';
   if ($form->{l_main_contact_person}) {
     $main_cp_select =  qq/, (SELECT concat(cp.cp_givenname, ' ', cp.cp_name, ' | ', cp.cp_email, ' | ', cp.cp_phone1)
-                              FROM contacts cp WHERE ct.id=cp.cp_cv_id AND cp.cp_main LIMIT 1)
+                              FROM ${cv}_contacts
+                              LEFT JOIN contacts cp ON cp_id = contact_id
+                              WHERE ct.id=${cv}_id AND main LIMIT 1)
                               AS main_contact_person /;
   }
   my $query =
     qq|SELECT ct.*, ct.itime::DATE AS insertdate, b.description AS business, e.name as salesman, | .
-    qq|  pt.description as payment, tz.description as taxzone, vc.name as linked_customer_vendor, vc.id as linked_customer_vendor_id | .
+    qq|  pt.description as payment, tz.description as taxzone, countries.$country_description_key as country | .
+    $cvl_select .
     $pg_select .
     $main_cp_select .
     (qq|, NULL AS invnumber, NULL AS ordnumber, NULL AS quonumber, NULL AS invid, NULL AS module, NULL AS formtype, NULL AS closed | x!! $join_records) .
@@ -316,8 +337,8 @@ sub search {
     qq|LEFT JOIN employee e ON (ct.salesman_id = e.id) | .
     qq|LEFT JOIN payment_terms pt ON (ct.payment_id = pt.id) | .
     qq|LEFT JOIN tax_zones tz ON (ct.taxzone_id = tz.id) | .
-    qq|LEFT JOIN customer_vendor_links cvl ON (ct.id = cvl.${cv}_id) | .
-    qq|LEFT JOIN $vc vc ON (vc.id = cvl.${vc}_id) | .
+    qq|LEFT JOIN countries ON (ct.country_id = countries.id) | .
+    $cvl_join .
     $pg_join .
     qq|WHERE $where|;
 
@@ -333,7 +354,8 @@ sub search {
       $query .=
         qq| UNION | .
         qq|SELECT ct.*, ct.itime::DATE AS insertdate, b.description AS business, e.name as salesman, | .
-        qq|  pt.description as payment, tz.description as taxzone | .
+        qq|  pt.description as payment, tz.description as taxzone, countries.$country_description_key as country | .
+        $cvl_select .
         $pg_select .
         $main_cp_select .
         qq|, a.invnumber, a.ordnumber, a.quonumber, a.id AS invid, | .
@@ -345,6 +367,8 @@ sub search {
         qq|LEFT JOIN employee e ON (ct.salesman_id = e.id) | .
         qq|LEFT JOIN payment_terms pt ON (ct.payment_id = pt.id) | .
         qq|LEFT JOIN tax_zones tz ON (ct.taxzone_id = tz.id) | .
+        qq|LEFT JOIN countries ON (ct.country_id = countries.id) | .
+        $cvl_join .
         $pg_join .
         qq|WHERE $where AND (a.invoice = '1')|;
     }
@@ -354,7 +378,8 @@ sub search {
       $query .=
         qq| UNION | .
         qq|SELECT ct.*, ct.itime::DATE AS insertdate, b.description AS business, e.name as salesman, | .
-        qq|  pt.description as payment, tz.description as taxzone | .
+        qq|  pt.description as payment, tz.description as taxzone, countries.$country_description_key as country | .
+        $cvl_select .
         $pg_select .
         $main_cp_select .
         qq|, ' ' AS invnumber, o.ordnumber, o.quonumber, o.id AS invid, | .
@@ -365,6 +390,8 @@ sub search {
         qq|LEFT JOIN employee e ON (ct.salesman_id = e.id) | .
         qq|LEFT JOIN payment_terms pt ON (ct.payment_id = pt.id) | .
         qq|LEFT JOIN tax_zones tz ON (ct.taxzone_id = tz.id) | .
+        qq|LEFT JOIN countries ON (ct.country_id = countries.id) | .
+        $cvl_join .
         $pg_join .
         qq|WHERE $where AND ((o.record_type = 'sales_order') OR (o.record_type = 'purchase_order'))|;
     }
@@ -374,7 +401,8 @@ sub search {
       $query .=
         qq| UNION | .
         qq|SELECT ct.*, ct.itime::DATE AS insertdate, b.description AS business, e.name as salesman, | .
-        qq|  pt.description as payment, tz.description as taxzone | .
+        qq|  pt.description as payment, tz.description as taxzone, countries.$country_description_key as country | .
+        $cvl_select .
         $pg_select .
         $main_cp_select .
         qq|, ' ' AS invnumber, o.ordnumber, o.quonumber, o.id AS invid, | .
@@ -385,6 +413,8 @@ sub search {
         qq|LEFT JOIN employee e ON (ct.salesman_id = e.id) | .
         qq|LEFT JOIN payment_terms pt ON (ct.payment_id = pt.id) | .
         qq|LEFT JOIN tax_zones tz ON (ct.taxzone_id = tz.id) | .
+        qq|LEFT JOIN countries ON (ct.country_id = countries.id) | .
+        $cvl_join .
         $pg_join .
         qq|WHERE $where AND ((o.record_type = 'sales_quotation') OR (o.record_type = 'request_quotation'))|;
     }
@@ -474,7 +504,7 @@ sub search_contacts {
     'vcnumber'  => 'vcnumber, cp_name, cp_givenname',
     );
 
-  my %sortcols  = map { $_ => 1 } qw(cp_name cp_givenname cp_phone1 cp_phone2 cp_mobile1 cp_email cp_street cp_zipcode cp_city cp_position vcname vcnumber);
+  my %sortcols  = map { $_ => 1 } qw(cp_name cp_givenname cp_phone1 cp_phone2 cp_mobile1 cp_email cp_street cp_zipcode cp_city cp_country cp_position vcname vcnumber);
 
   my $order_by  = $sortcols{$::form->{sort}} ? $::form->{sort} : 'cp_name';
   $::form->{sort} = $order_by;
@@ -521,22 +551,53 @@ sub search_contacts {
       add_token(\@where_tokens, \@values, col =>  "cp.cp_$_", val => $filter->{"cp_$_"}, method => 'ILIKE', esc => 'substr');
     }
     add_token(\@where_tokens, \@values, col => "COALESCE(c.name, v.name)", val => $filter->{vcname}, method => 'ILIKE', esc => 'substr') if $filter->{vcname};
-
-    push @where_tokens, 'COALESCE(c.obsolete, v.obsolete) is FALSE' if $filter->{status} eq 'active';
-    push @where_tokens, 'cp.cp_cv_id IS NULL'                       if $filter->{status} eq 'orphaned';
   }
 
   my $where = @where_tokens ? 'WHERE ' . join ' AND ', @where_tokens : '';
 
-  my $query     = qq|SELECT cp.*,
-                       COALESCE(c.id,             v.id)           AS vcid,
-                       COALESCE(c.name,           v.name)         AS vcname,
-                       COALESCE(c.customernumber, v.vendornumber) AS vcnumber,
-                       CASE WHEN c.name IS NULL THEN 'vendor' ELSE 'customer' END AS db
+  my $country_description_key = SL::DB::Country->description_column_localized($::myconfig{countrycode});
+
+  my @customer_where_tokens = @where_tokens;
+  my @vendor_where_tokens = @where_tokens;
+
+  if ($params{filter}{status} eq 'active') {
+    push @customer_where_tokens, 'cc.id IS NOT NULL';
+    push @vendor_where_tokens,   'vc.id IS NOT NULL';
+  } elsif ($params{filter}{status} eq 'orphaned') {
+    # avoid duplicate entries by deactivating the vendor side
+    push @customer_where_tokens, '(cc.id IS NULL AND vc.id IS NULL)';
+    push @vendor_where_tokens,   'false';
+  } else {
+    # avoid dublicate entries having no customer and no vendor assigned
+    push @customer_where_tokens, '(cc.id IS NOT NULL OR vc.id IS NULL)';
+    push @vendor_where_tokens,   '(vc.id IS NOT NULL)';
+  }
+
+  my $customer_where = @customer_where_tokens ? 'WHERE ' . join ' AND ', @customer_where_tokens : '';
+  my $vendor_where   = @vendor_where_tokens   ? 'WHERE ' . join ' AND ', @vendor_where_tokens : '';
+
+  my $query     = qq|SELECT cp.*, cv.id AS vcid, cv.name AS vcname,
+                       cv.customernumber AS vcnumber, 'customer' AS db,
+                       countries.$country_description_key AS cp_country
                      FROM contacts cp
-                     LEFT JOIN customer c ON (cp.cp_cv_id = c.id)
-                     LEFT JOIN vendor v   ON (cp.cp_cv_id = v.id)
-                     $where
+                     LEFT JOIN countries            ON (cp.cp_country_id = countries.id)
+                     LEFT JOIN customer_contacts cc ON (cc.contact_id = cp.cp_id)
+                     LEFT JOIN vendor_contacts vc   ON (vc.contact_id = cp.cp_id)
+                     LEFT JOIN customer cv          ON (cc.customer_id = cv.id)
+                     $customer_where
+
+                     UNION
+
+                     SELECT cp.*, cv.id AS vcid, cv.name AS vcname,
+                       cv.vendornumber AS vcnumber, 'vendor' AS db,
+                       countries.$country_description_key AS cp_country
+                     FROM contacts cp
+                     LEFT JOIN countries            ON (cp.cp_country_id = countries.id)
+                     LEFT JOIN customer_contacts cc ON (cc.contact_id = cp.cp_id)
+                     LEFT JOIN vendor_contacts vc   ON (vc.contact_id = cp.cp_id)
+                     LEFT JOIN vendor cv            ON (vc.vendor_id = cv.id)
+                     $vendor_where
+
                      ORDER BY $order_by|;
 
   my $contacts  = selectall_hashref_query($::form, $dbh, $query, @values);

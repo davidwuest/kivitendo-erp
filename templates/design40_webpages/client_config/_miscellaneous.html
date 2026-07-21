@@ -33,7 +33,7 @@
     </tr>
     <tr>
      <td>[% LxERP.t8("Country") %]</td>
-     <td>[% L.input_tag('defaults.address_country', SELF.defaults.address_country, style=style) %]</td>
+     <td>[% P.country.picker('defaults.address_country_id', SELF.defaults.address_country_id, class='wi-normal') %]</td>
     </tr>
     <tr>
       <th class="caption" colspan="2">[% LxERP.t8("Company settings") %]</th>
@@ -41,6 +41,22 @@
     <tr>
       <th> [% LxERP.t8("Signature") %] </th>
       <td> [% L.textarea_tag('defaults.signature', SELF.defaults.signature, rows=4, class='wi-wide texteditor') %] </td>
+    </tr>
+    <tr>
+      <th> [% LxERP.t8("Managing directors") %] </th>
+      <td> [% L.input_tag('defaults.managing_directors', SELF.defaults.managing_directors, class='wi-wide') %] </td>
+    </tr>
+    <tr>
+      <th> [% LxERP.t8("Registered seat") %] </th>
+      <td> [% L.input_tag('defaults.registered_seat', SELF.defaults.registered_seat, class='wi-wide') %] </td>
+    </tr>
+    <tr>
+      <th> [% LxERP.t8("Commercial register entry") %] </th>
+      <td> [% L.input_tag('defaults.commercial_register_entry', SELF.defaults.commercial_register_entry, class='wi-wide') %] </td>
+    </tr>
+    <tr>
+      <th> [% LxERP.t8("Commercial register place") %] </th>
+      <td> [% L.input_tag('defaults.commercial_register_place', SELF.defaults.commercial_register_place, class='wi-wide') %] </td>
     </tr>
     <tr>
       <th> [% LxERP.t8("Tax number") %] </th>

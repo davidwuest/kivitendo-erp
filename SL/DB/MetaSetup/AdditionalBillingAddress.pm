@@ -11,7 +11,7 @@ __PACKAGE__->meta->table('additional_billing_addresses');
 __PACKAGE__->meta->columns(
   city            => { type => 'text' },
   contact         => { type => 'text' },
-  country         => { type => 'text' },
+  country_id      => { type => 'integer' },
   customer_id     => { type => 'integer' },
   default_address => { type => 'boolean', default => 'false', not_null => 1 },
   department_1    => { type => 'text' },
@@ -26,6 +26,8 @@ __PACKAGE__->meta->columns(
   name            => { type => 'text' },
   phone           => { type => 'text' },
   street          => { type => 'text' },
+  taxnumber       => { type => 'text' },
+  ustid           => { type => 'text' },
   zipcode         => { type => 'text' },
 );
 
@@ -34,6 +36,11 @@ __PACKAGE__->meta->primary_key_columns([ 'id' ]);
 __PACKAGE__->meta->allow_inline_column_values(1);
 
 __PACKAGE__->meta->foreign_keys(
+  country => {
+    class       => 'SL::DB::Country',
+    key_columns => { country_id => 'id' },
+  },
+
   customer => {
     class       => 'SL::DB::Customer',
     key_columns => { customer_id => 'id' },
@@ -41,4 +48,4 @@ __PACKAGE__->meta->foreign_keys(
 );
 
 1;
-;
+

@@ -46,8 +46,8 @@ my $bindir       = "$basedir/bin/mozilla";
 my @progdirs     = ( "$basedir/SL" );
 my @menufiles    = glob("${basedir}/menus/*/*");
 my @webpages     = qw(webpages mobile_webpages design40_webpages);
-my @javascript_dirs = ($basedir .'/js', map { $basedir .'/templates/' . $_ } @webpages);
-my $javascript_output_dir = $basedir .'/js';
+my @javascript_dirs = ($basedir .'/public/js', map { $basedir .'/templates/' . $_ } @webpages);
+my $javascript_output_dir = $basedir .'/public/js';
 my $submitsearch = qr/type\s*=\s*[\"\']?submit/i;
 our $self        = {};
 our $missing     = {};
@@ -637,7 +637,7 @@ sub scanhtmlfile {
       $plugins{loaded}->{$1} = 1;
     }
 
-    while ($line =~ m/\[\%[^\w]*(\w+)\.\w+\(/g) {
+    while ($line =~ m/\[\%[^\w]*(\w+)(?:\.\w+)+\(/g) {
       my $plugin = $1;
       $plugins{needed}->{$plugin} = 1 if (first { $_ eq $plugin } qw(HTML LxERP JavaScript JSON L P));
     }

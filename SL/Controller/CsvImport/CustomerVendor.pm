@@ -80,6 +80,7 @@ sub check_objects {
     $self->check_payment($entry);
     $self->check_delivery_term($entry);
     $self->check_taxzone($entry,  take_default => 1);
+    $self->check_country($entry);
     $self->check_currency($entry, take_default => 1);
     $self->check_salesman($entry);
     $self->check_pricegroup($entry) if 'customer' eq $self->table;
@@ -207,6 +208,22 @@ sub check_business {
   return 1;
 }
 
+sub check_country {
+  my ($self, $entry) = @_;
+
+  if ($entry->{raw_data}{country_id} || $entry->{raw_data}{country}) {
+    return $self->check_country_optional($entry, 'country_id', 'country');
+  } else {
+    my $object = $entry->{object};
+    my $country_id = $self->controller->profile->get('default_country_id');
+
+    $object->country_id($country_id);
+    $self->clone_methods->{country_id} = 1;
+
+    return 1;
+  }
+}
+
 sub check_salesman {
   my ($self, $entry) = @_;
 
@@ -277,6 +294,7 @@ sub setup_displayable_columns {
                                  { name => 'city',              description => $::locale->text('City')                            },
                                  { name => 'contact',           description => $::locale->text('Contact')                         },
                                  { name => 'country',           description => $::locale->text('Country')                         },
+                                 { name => 'country_id',        description => $::locale->text('Country (database ID)')           },
                                  { name => 'creditlimit',       description => $::locale->text('Credit Limit')                    },
                                  { name => 'currency',          description => $::locale->text('Currency')                        },
                                  { name => 'currency_id',       description => $::locale->text('Currency (database ID)')          },
@@ -303,6 +321,7 @@ sub setup_displayable_columns {
                                  { name => 'payment_id',        description => $::locale->text('Payment terms (database ID)')     },
                                  { name => 'payment',           description => $::locale->text('Payment terms (name)')            },
                                  { name => 'phone',             description => $::locale->text('Phone')                           },
+                                 { name => 'reduction_terms',   description => $::locale->text('Reduction Terms')                 },
                                  { name => 'salesman',          description => $::locale->text('Salesman')                        },
                                  { name => 'salesman_id',       description => $::locale->text('Salesman (database ID)')          },
                                  { name => 'salesman_login',    description => $::locale->text('Salesman (login)')                },

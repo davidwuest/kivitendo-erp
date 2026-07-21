@@ -43,10 +43,10 @@
           [% P.customer_vendor.picker("order.${SELF.cv}" _ '_id', SELF.order.$cv_id, type=SELF.cv, show_details="1") %]
         </td>
       </tr>
-      <tr id='cp_row' [% IF !SELF.order.${SELF.cv}.contacts.size %]style='display:none'[% END %]>
+      <tr id='cp_row' [% IF !SELF.cv_assigned_contacts.size %]style='display:none'[% END %]>
         <th>[% 'Contact Person' | $T8 %]</th>
         <td>[% L.select_tag('order.cp_id',
-                            SELF.order.${SELF.cv}.contacts,
+                            SELF.cv_assigned_contacts,
                             default=SELF.order.cp_id,
                             title_key='full_name_dep',
                             value_key='cp_id',
@@ -246,16 +246,25 @@
           class='wi-normal',
           title_key='safe_name') %]</td>
       </tr>
+    [% ELSE %]
+      <tr>
+        <th>[% 'Buyer' | $T8 %]</th>
+        <td>[% L.select_tag('order.buyer_id',
+          SELF.all_employees,
+          default=( SELF.order.buyer_id ? SELF.order.buyer_id : SELF.current_employee_id),
+          class='wi-normal',
+          title_key='safe_name') %]</td>
+      </tr>
     [% END %]
     [% IF (SELF.type == "sales_order_intake" || SELF.type == "sales_order" || SELF.type == "purchase_order" || SELF.type == "purchase_order_confirmation") %]
       <tr>
         <th>[% IF SELF.type == "purchase_order_confirmation" %][% 'Order Confirmation Number' | $T8 %][% ELSE %][% 'Order Number' | $T8 %][% END %]</th>
         <td>
           [%- IF INSTANCE_CONF.get_sales_purchase_record_numbers_changeable %]
-            [% L.input_tag('order.ordnumber', SELF.order.ordnumber, onchange='kivi.Order.set_number_in_title(this)', class='wi-normal') %]
+            [% L.input_tag('order.ordnumber', SELF.order.ordnumber, class='number-for-title wi-normal') %]
           [%- ELSIF SELF.order.id %]
             [% HTML.escape(SELF.order.ordnumber) %]
-            [% L.hidden_tag("order.ordnumber", SELF.order.ordnumber) %]
+            [% L.hidden_tag("order.ordnumber", SELF.order.ordnumber, class='number-for-title') %]
           [% ELSE %]
             [% LxERP.t8("will be set upon saving") %]
           [%- END %]
@@ -287,10 +296,10 @@
         [%- IF (SELF.type == "sales_order_intake" || SELF.type == "sales_order" || SELF.type == "purchase_order" || SELF.type == "purchase_order_confirmation") -%]
           [% L.input_tag('order.quonumber', SELF.order.quonumber, class='wi-normal') %]
         [%- ELSIF INSTANCE_CONF.get_sales_purchase_record_numbers_changeable %]
-          [% L.input_tag('order.quonumber', SELF.order.quonumber, onchange='kivi.Order.set_number_in_title(this)', class='wi-normal') %]
+          [% L.input_tag('order.quonumber', SELF.order.quonumber, class='number-for-title wi-normal') %]
         [%- ELSIF SELF.order.id %]
           [% HTML.escape(SELF.order.quonumber) %]
-          [% L.hidden_tag("order.quonumber", SELF.order.quonumber) %]
+          [% L.hidden_tag("order.quonumber", SELF.order.quonumber, class='number-for-title') %]
         [% ELSE %]
           [% LxERP.t8("will be set upon saving") %]
         [%- END %]
@@ -339,7 +348,7 @@
     [% IF SELF.type == "sales_quotation" %]
       <tr>
         <th>[% 'Order probability' | $T8 %]</th>
-        <td>[% L.select_tag('order.order_probability', SELF.order_probabilities, title='title', default=SELF.order.order_probability) %]%</td>
+        <td>[% L.select_tag('order.order_probability', SELF.order_probabilities, value_key='id', title_key='title', default=SELF.order.order_probability) %]</td>
       </tr>
       <tr>
         <th>[% 'Expected billing date' | $T8 %]</th>
@@ -379,7 +388,7 @@
       </th>
       <th>[% 'position'     | $T8 %] </th>
       <th style='text-align:center'><img src="image/updown.png" alt="[% LxERP.t8('reorder item') %]"></th>
-      <th style='text-align:center'><img src="image/close.png" alt="[% LxERP.t8('delete item') %]"></th>
+      <th style='text-align:center'><img src="image/close.png" alt="[% LxERP.t8('delete item') %]" class="close"></th>
       [%- IF SELF.show_update_button -%]
       <th class="listheading" style='text-align:center' nowrap width="1">
         [%- L.img_tag(src="image/rotate_cw.svg",
